@@ -47,24 +47,28 @@ Login de empleado (mobile) o admin (web). Acepta **email o legajo** en `identifi
 Request: `{ "identifier": string, "password": string, "client": "MOBILE" | "ADMIN" }`
 
 - `client=MOBILE`: solo rol `EMPLOYEE`. Otro rol → 403 `ROLE_NOT_ALLOWED`.
+- Email sin verificar → 403 `EMAIL_NOT_VERIFIED` (sin enviar OTP; ver flujo 4 de `04-auth-y-seguridad.md`). Credenciales válidas + email verificado → dispara OTP WhatsApp (202 + `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`).
 - `client=ADMIN`: roles `ADMIN`/`SUPER_ADMIN` → dispara 2FA (202 + `{ "data": { "twoFactorRequired": true, "challengeId": "<uuid>" } }`). `TO_BE_ADMIN` → 403 `ADMIN_ACCESS_PENDING` ("Su solicitud de acceso administrativo se encuentra pendiente de aprobación.", spec §10.3). `EMPLOYEE` → 403 `ROLE_NOT_ALLOWED`.
 
-Response 200 (sin 2FA):
+`/auth/login` siempre responde 202 (OTP mobile o 2FA admin): el 200 con tokens solo lo devuelven `POST /auth/otp/verify` (mobile) y `POST /auth/login/2fa/verify` (admin), con esta forma:
 ```json
 { "data": { "user": { "id": "...", "firstName": "...", "lastName": "...", "email": "...", "employeeId": "...", "role": "EMPLOYEE" },
             "tokens": { "accessToken": "...", "refreshToken": "...", "expiresIn": 1800 } } }
 ```
-Errores: 401 `INVALID_CREDENTIALS`, 403 `ACCOUNT_INACTIVE`, 403 `ROLE_NOT_ALLOWED`, 403 `ADMIN_ACCESS_PENDING`, 429 `TOO_MANY_ATTEMPTS`.
+Errores: 401 `INVALID_CREDENTIALS`, 403 `ACCOUNT_INACTIVE`, 403 `ROLE_NOT_ALLOWED`, 403 `ADMIN_ACCESS_PENDING`, 403 `EMAIL_NOT_VERIFIED`, 429 `TOO_MANY_ATTEMPTS`.
 
 ### POST /auth/login/2fa/verify
 Request: `{ "challengeId": uuid, "code": string }` → 200 igual que login. Errores: 401 `INVALID_OTP`, 410 `OTP_EXPIRED`, 429 `TOO_MANY_ATTEMPTS`.
 
 ### POST /auth/google
-Login mobile con Google. Request: `{ "idToken": string, "phone": string }`. El backend verifica el `idToken` contra Google, asocia/encuentra el usuario por email y envía OTP por WhatsApp al `phone` registrado.
-Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 401 `INVALID_GOOGLE_TOKEN`, 404 `USER_NOT_FOUND`, 403 `ACCOUNT_INACTIVE`.
+Login mobile con Google. Request: `{ "idToken": string, "phone": string }`. El backend verifica el `idToken` contra Google, asocia/encuentra el usuario por email y —solo si el email está verificado— envía OTP por WhatsApp al `phone` registrado.
+Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 401 `INVALID_GOOGLE_TOKEN`, 404 `USER_NOT_FOUND`, 403 `ACCOUNT_INACTIVE`, 403 `EMAIL_NOT_VERIFIED`.
 
 ### POST /auth/otp/verify
-Request: `{ "challengeId": uuid, "code": string }` → 200 con `{ user, tokens }` (igual que login). Errores: 401 `INVALID_OTP`, 410 `OTP_EXPIRED`, 429 `TOO_MANY_ATTEMPTS`.
+Request: `{ "challengeId": uuid, "code": string }`.
+- purpose `LOGIN` / `GOOGLE_LOGIN` → 200 con `{ user, tokens }` (igual que login).
+- purpose `REGISTER` → crea el `User`, envía el email de verificación (magic link) y responde 202 `{ "data": { "emailVerificationRequired": true } }` — **sin tokens**: el login queda bloqueado (`EMAIL_NOT_VERIFIED`) hasta confirmar el email.
+Errores: 401 `INVALID_OTP`, 410 `OTP_EXPIRED`, 429 `TOO_MANY_ATTEMPTS`.
 
 ### POST /auth/otp/resend
 Request: `{ "challengeId": uuid }` → 202 `{ "data": { "sent": true } }`. Cooldown de 60 s: 429 `OTP_RESEND_COOLDOWN`.
@@ -76,7 +80,13 @@ Registro de empleado desde mobile. Request:
   "phone": "...", "employeeId": "...", "dni": "...", "address": "...",
   "siteId": "<uuid>", "birthDate": "YYYY-MM-DD" }
 ```
-Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`OtpCode.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
+Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`OtpCode.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
+
+### GET /auth/email/verify
+Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso, 24 h). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
+
+### POST /auth/email-verification/resend
+Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Reenvía el email de verificación solo si la cuenta existe y sigue sin verificar.
 
 ### POST /auth/password-recovery
 Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Envía email con enlace/token (1 h, un solo uso).

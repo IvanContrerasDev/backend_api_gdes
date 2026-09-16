@@ -13,15 +13,17 @@
 
 - Hash con **Argon2**.
 - Política igual a la que mobile ya valida en cliente (`utils/validations.ts`): reutilizar esas reglas en el servidor (mínimo de longitud, mayúscula, minúscula, número y símbolo — trasladar la regla exacta desde el código mobile al implementar).
-- Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email (spec §11.1).
+- Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email — `emailVerifiedAt` se setea en el alta (spec §11.1).
 - La contraseña nunca se puede revisualizar (§11.1).
 
 ## Flujos
 
-### 1. Login empleado (mobile) — email o legajo + password
+### 1. Login empleado (mobile) — email o legajo + password + OTP WhatsApp
 1. `POST /auth/login` con `identifier` (email normalizado `trim().toLowerCase()` **o** legajo) + `password`, `client=MOBILE`.
 2. Solo rol `EMPLOYEE`; cuenta `ACTIVE` obligatoria (INACTIVE bloquea todo, spec §6).
-3. Éxito → `{ user, tokens }`.
+3. Email sin verificar (`emailVerifiedAt = null`) → 403 `EMAIL_NOT_VERIFIED`, **sin enviar OTP** (la app muestra la pantalla "revisá tu correo" y vuelve al login; ver flujo 4).
+4. Credenciales válidas + email verificado → 202 con `challengeId` y envío de OTP de 6 dígitos por WhatsApp al `phone` registrado.
+5. `POST /auth/otp/verify` → `{ user, tokens }`.
 
 ### 2. Login admin (web) — password + 2FA por email
 1. `POST /auth/login` con `client=ADMIN`. Roles `ADMIN`/`SUPER_ADMIN` → 202 con `challengeId` y envío de código de 6 dígitos por email.
@@ -31,14 +33,17 @@
 
 ### 3. Login Google (mobile) — OAuth real + OTP WhatsApp
 1. La app usa Authorization Code + PKCE (`expo-auth-session`) y obtiene un `id_token` de Google.
-2. `POST /auth/google` con `idToken` + `phone`: el backend verifica el token contra Google (audience = `GOOGLE_CLIENT_ID`), busca el usuario por email y envía OTP de 6 dígitos por WhatsApp al teléfono.
-3. `POST /auth/otp/verify` → tokens.
+2. `POST /auth/google` con `idToken` + `phone`: el backend verifica el token contra Google (audience = `GOOGLE_CLIENT_ID`) y busca el usuario por email. Si el email no está verificado → 403 `EMAIL_NOT_VERIFIED` (mismo caso que el flujo 1: la app informa que revise su correo y vuelve al login).
+3. Email verificado → envío de OTP de 6 dígitos por WhatsApp al teléfono registrado.
+4. `POST /auth/otp/verify` → tokens.
 
-### 4. Registro de empleado (mobile)
+### 4. Registro de empleado (mobile) — OTP WhatsApp + verificación de email
 1. `POST /auth/register` con los 10 campos. Valida unicidad global de email, legajo y DNI (spec §7). **No crea el `User` aún**: el payload queda en el challenge OTP.
 2. Envía OTP por WhatsApp.
-3. `POST /auth/otp/verify` → se crea el `User` (`role=EMPLOYEE`, `accountStatus=ACTIVE`) y se devuelven tokens.
-4. OTP: 6 dígitos, 10 min, reenvío con cooldown de 60 s.
+3. `POST /auth/otp/verify` → se crea el `User` (`role=EMPLOYEE`, `accountStatus=ACTIVE`, `emailVerifiedAt=null`), se envía el **email de verificación** (magic link con botón "confirmar", token firmado de un solo uso, 24 h) y se responde 202 `{ emailVerificationRequired: true }` — **sin tokens**.
+4. El usuario toca "confirmar" en el email → `GET /auth/email/verify?token=...` marca `emailVerifiedAt` y redirige al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`).
+5. Recién con el email verificado puede completar un login (flujos 1 y 3). Si intenta loguearse antes → 403 `EMAIL_NOT_VERIFIED` y puede pedir reenvío con `POST /auth/email-verification/resend`.
+6. OTP: 6 dígitos, 10 min, reenvío con cooldown de 60 s.
 
 ### 5. Recuperación de contraseña (ambas apps)
 1. `POST /auth/password-recovery` → respuesta neutra siempre (no revela si el email existe).

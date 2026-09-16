@@ -25,6 +25,7 @@
 | 403 | `ROLE_NOT_ALLOWED` | false | Rol no permitido en ese cliente/endpoint |
 | 403 | `ACCOUNT_INACTIVE` | false | Cuenta desactivada (bloquea todo, spec §6) |
 | 403 | `ADMIN_ACCESS_PENDING` | false | Login admin con solicitud pendiente (§10.3) |
+| 403 | `EMAIL_NOT_VERIFIED` | false | Login mobile con email sin verificar (bloquea antes del OTP) |
 | 403 | `OUT_OF_WORKPLACE_AREA` | false | Marcación fuera del círculo + tolerancia |
 | 404 | `NOT_FOUND` / `USER_NOT_FOUND` / `WORKPLACE_NOT_FOUND` | false | Recurso inexistente |
 | 409 | `USER_ALREADY_EXISTS` | false | Email duplicado |

@@ -16,7 +16,7 @@ Interval N──0..1 AttendanceEvent (entryEvent / exitEvent)
 User 1──N Timesheet
 Workplace 1──N Timesheet
 User 1──N Document
-User 1──N RefreshToken / OtpCode / PasswordResetToken / AdminAccessRequest
+User 1──N RefreshToken / OtpCode / PasswordResetToken / EmailVerificationToken / AdminAccessRequest
 ```
 
 NO existe asignación fija `User ↔ Workplace` (spec §8): la relación es indirecta vía registros.
@@ -43,8 +43,9 @@ NO existe asignación fija `User ↔ Workplace` (spec §8): la relación es indi
 | position | string? | nullable | Ídem (puesto) |
 | role | UserRole | required | Ver enums |
 | accountStatus | AccountStatus | default ACTIVE | INACTIVE bloquea todo acceso y operación (spec §6/§11.4) |
+| emailVerifiedAt | timestamp? | nullable | `null` hasta confirmar el email (magic link del registro mobile). Sin verificar → login bloqueado (403 `EMAIL_NOT_VERIFIED`) |
 
-Nunca se elimina: se desactiva. Empleado creado por admin queda habilitado inmediato, sin verificación de email ni cambio de contraseña obligatorio (spec §11.1).
+Nunca se elimina: se desactiva. Empleado creado por admin queda habilitado inmediato, sin verificación de email (`emailVerifiedAt` se setea en el alta) ni cambio de contraseña obligatorio (spec §11.1).
 
 ### Site (provincia)
 
@@ -171,7 +172,8 @@ Sí se puede eliminar (con confirmación en UI, §40.5). No se vincula técnicam
 ### Tablas de auth
 
 - `RefreshToken`: id, userId, tokenHash, expiresAt, rotatedAt?, revokedAt?, replacedById? — rotación con detección de reuso.
-- `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.
+- `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `LOGIN` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.
+- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h), consumedAt? — magic link de verificación de email, un solo uso.
 - `PasswordResetToken`: id, userId, tokenHash, expiresAt, consumedAt? — un solo uso.
 - `AdminAccessRequest`: id, userId, status (`PENDING` / `APPROVED` / `REJECTED`), decisionTokenHash (links firmados del email al SuperAdmin), expiresAt, decidedAt?, decidedBy?.
 
@@ -196,7 +198,7 @@ enum DocumentType {
   DNI, MEDICAL_CERTIFICATE, CONTRACT, ART, EPP_DOCUMENTATION,
   MEDICAL_RECORD, INTERNAL_RULES, ADDRESS_DECLARATION, OTHER
 }
-enum OtpPurpose { REGISTER, GOOGLE_LOGIN, ADMIN_2FA }
+enum OtpPurpose { REGISTER, LOGIN, GOOGLE_LOGIN, ADMIN_2FA }
 enum OtpChannel { WHATSAPP, EMAIL }
 enum AdminRequestStatus { PENDING, APPROVED, REJECTED }
 ```

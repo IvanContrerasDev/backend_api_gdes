@@ -15,12 +15,13 @@ Emails del sistema (spec §9.2/§9.3/§10.2):
 | 3 | Confirmación de solicitud recibida | `POST /auth/admin-access-request` | Solicitante |
 | 4 | Solicitud de aprobación con links firmados aprobar/rechazar | `POST /auth/admin-access-request` | SuperAdmin |
 | 5 | Resultado (aprobado → rol ADMIN / rechazado → rol EMPLOYEE) | Decisión del SuperAdmin | Solicitante |
+| 6 | Verificación de email (magic link con botón "confirmar") | Registro mobile tras verificar OTP, y reenvíos (`/auth/email-verification/resend`) | Empleado |
 
 ## 2. Meta WhatsApp Cloud API — `WhatsAppProvider`
 
 Interfaz: `sendOtp({ phone, code })`. En dev: implementación `log` (config `WHATSAPP_PROVIDER=log`).
 
-- Uso: OTP de 6 dígitos en registro de empleado y login Google (mobile).
+- Uso: OTP de 6 dígitos en registro de empleado, login con email/legajo + password y login Google (mobile).
 - Requiere app de Meta, número verificado y **plantilla de mensaje** aprobada (los mensajes iniciados por el negocio exigen plantilla). Gestionar alta de la plantilla es tarea operativa previa al deploy.
 - Config: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`.
 

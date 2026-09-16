@@ -26,7 +26,7 @@ Un solo proceso NestJS, un módulo por dominio. Cada módulo tiene controller, s
 
 | Módulo | Responsabilidad |
 |---|---|
-| `AuthModule` | Login (email o legajo + password), Google OAuth, OTP WhatsApp, 2FA email admin, refresh con rotación, recuperación de contraseña, registro de empleado, solicitud de acceso admin y su aprobación |
+| `AuthModule` | Login mobile (email o legajo + password) y Google OAuth, ambos con OTP WhatsApp; verificación de email por magic link en el registro; 2FA email admin; refresh con rotación; recuperación de contraseña; solicitud de acceso admin y su aprobación |
 | `UsersModule` | CRUD de empleados (sin delete; activate/deactivate), perfil propio |
 | `StructureModule` | Clients, sites (provincias), workplaces con configuración geográfica |
 | `AttendanceModule` | Ingesta idempotente de eventos de marcación, proyección a registros diarios con intervalos, validaciones GPS, revisión y edición manual por admin, estado actual del empleado |
