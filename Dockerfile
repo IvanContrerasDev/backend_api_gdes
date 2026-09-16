@@ -25,7 +25,10 @@ FROM base AS production
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev && npx prisma generate
+# prisma CLI is a devDependency, so no `prisma generate` here: the generated
+# client (pinned to the lockfile versions) is copied from the build stage.
+RUN npm ci --omit=dev
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
