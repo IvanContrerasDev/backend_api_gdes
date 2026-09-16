@@ -1,0 +1,155 @@
+// GdeS — initial schema (F-001): User, Site and base enums.
+// Source of truth: docs/02-modelo-de-datos.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String        @id @default(uuid()) @db.Uuid
+  firstName     String
+  lastName      String
+  email         String        @unique
+  passwordHash  String
+  phone         String
+  dni           String        @unique
+  employeeId    String        @unique
+  address       String
+  birthDate     DateTime      @db.Date
+  siteId        String        @db.Uuid
+  site          Site          @relation(fields: [siteId], references: [id])
+  cuil          String?
+  hireDate      DateTime?     @db.Date
+  position      String?
+  role          UserRole
+  accountStatus AccountStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Site {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  users     User[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Base enums — central definition (docs/02-modelo-de-datos.md, spec §89).
+// Enums without a model yet are used by features F-002+.
+
+enum UserRole {
+  EMPLOYEE
+  TO_BE_ADMIN
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RecordStatus {
+  COMPLETE
+  INCOMPLETE
+}
+
+enum ReviewStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+  MANUAL_LOADED
+}
+
+enum IntervalStatus {
+  OPEN
+  CLOSED
+  SEMI_CLOSED
+}
+
+enum IntervalType {
+  WORK
+  ABSENCE
+}
+
+enum IntervalReviewStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RecordOrigin {
+  AUTOMATIC
+  MANUAL
+}
+
+enum AttendanceEventType {
+  CHECK_IN
+  CHECK_OUT
+  ABSENCE
+}
+
+enum EventOrigin {
+  MOBILE
+  ADMIN
+}
+
+enum TimesheetStatus {
+  PENDING
+  LOADED
+  ERROR
+}
+
+enum ShapeType {
+  CIRCLE
+}
+
+enum AbsenceReason {
+  ILLNESS
+  VACATION
+  LEAVE
+  ART
+  OTHER
+}
+
+enum DocumentType {
+  DNI
+  MEDICAL_CERTIFICATE
+  CONTRACT
+  ART
+  EPP_DOCUMENTATION
+  MEDICAL_RECORD
+  INTERNAL_RULES
+  ADDRESS_DECLARATION
+  OTHER
+}
+
+enum OtpPurpose {
+  REGISTER
+  GOOGLE_LOGIN
+  ADMIN_2FA
+}
+
+enum OtpChannel {
+  WHATSAPP
+  EMAIL
+}
+
+enum AdminRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
