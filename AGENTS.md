@@ -12,7 +12,8 @@ TypeScript estricto, Node.js, NestJS (monolito modular), PostgreSQL + Prisma, JW
 
 ## Reglas
 
-- Contratos con las apps en `../docs/arquitectura/contratos-api.md` (manda sobre supuestos locales) + `docs/03-contratos-api.md` de este repo.
+- Contratos con las apps en `docs/arquitectura/contratos-api.md` (SYNCED, manda sobre supuestos locales) + `docs/03-contratos-api.md` de este repo.
 - Convenciones (idioma, errores, paginación, timezone, archivos) en `docs/07-convenciones.md`.
 - Skills del stack en `.agents/skills/` — leerlas antes de implementar.
-- Quien trabaja acá es `implementer-backend`, despachado por el leader del repo raíz. Documentar en `../progress/backend/current.md`.
+- Este repo es autocontenido: tiene su propio `leader` (`kimi --agent leader`), `reviewer` e `implementer-backend` en `.agents/agents/`, su backlog en `feature_list.json` y su estado en `progress/`.
+- Los archivos marcados `SYNCED-FROM-TEMPLATE` son de solo lectura: los cambios se proponen en `docs/changes_proposals/` y los propaga el orchestrator de GdesProject.

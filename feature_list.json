@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "descripcion": "Backlog de features de backend_api_gdes. El leader local es el único que modifica estados. Estados: pending | in_progress | done. Una sola feature puede estar in_progress a la vez.",
+  "features": [
+    {
+      "id": "F-001",
+      "titulo": "Bootstrap del backend (NestJS + Prisma + Docker + cross-cutting)",
+      "apps": [
+        "backend"
+      ],
+      "estado": "done",
+      "taskSpec": "docs/tasks/F-001-backend-bootstrap.md",
+      "criterios": [
+        "Proyecto NestJS con TypeScript estricto compila y levanta",
+        "Prisma conectado a PostgreSQL con schema inicial (User, Site + seed de provincias)",
+        "Filtro de errores, interceptor { data }, ValidationPipe y guards globales funcionando",
+        "Dockerfile y docker-compose.yml (api + postgres) operativos",
+        "ConfigModule valida variables de entorno al boot"
+      ]
+    },
+    {
+      "id": "F-002",
+      "titulo": "Auth base: login email/legajo + JWT con refresh rotativo",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": "docs/tasks/F-002-backend-auth-base.md",
+      "criterios": [
+        "POST /auth/login acepta email o legajo, valida rol por client (MOBILE solo EMPLOYEE)",
+        "Access token 30 min + refresh 7 días con rotación y detección de reuso",
+        "POST /auth/refresh, POST /auth/logout operativos",
+        "Errores con formato { error: { code, message, retryable } } y códigos del catálogo"
+      ]
+    },
+    {
+      "id": "F-003",
+      "titulo": "Estructura organizacional: sites (seed), clients y workplaces CRUD",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": "docs/tasks/F-003-backend-estructura.md",
+      "criterios": [
+        "CRUD de clients y workplaces con status ACTIVE/INACTIVE (sin delete)",
+        "Workplace con config geográfica (círculo: lat/lng/radiusMeters/gpsAccuracyThreshold)",
+        "GET /sites (seed 6 provincias) y GET /workplaces para mobile",
+        "Listados paginados con filtros y orden server-side"
+      ]
+    },
+    {
+      "id": "F-004",
+      "titulo": "Gestión de empleados (admin) y perfil (mobile)",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "CRUD de users sin delete, con unicidad email/legajo/DNI",
+        "PATCH /users/{id}/status para activar/desactivar",
+        "GET /profile con los campos de PerfilScreen",
+        "Búsqueda parcial y orden default apellido+nombre"
+      ]
+    },
+    {
+      "id": "F-005",
+      "titulo": "Asistencia: ingesta de eventos idempotente + proyección a registros",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "POST /attendance/events persiste AttendanceEvent y proyecta record/intervals en una transacción",
+        "Idempotencia por clientRequestId (reintentos sin duplicar)",
+        "Algoritmo de intervalos §23 (OPEN/CLOSED/SEMI_CLOSED) y recálculo de recordStatus/totalWorkMinutes",
+        "Validaciones GPS con margen de tolerancia configurable → reviewStatus PENDING",
+        "GET /attendance/status deriva isWorking"
+      ]
+    },
+    {
+      "id": "F-006",
+      "titulo": "Registros admin: listado infinite scroll, edición manual y revisión",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "GET /records paginado (default 50) con todos los filtros de la spec §83",
+        "POST /records y PATCH /records/{id} marcan MANUAL_LOADED/origin MANUAL",
+        "PATCH /records/{id}/review con APPROVED/REJECTED (REJECTED reversible)",
+        "No existe DELETE de registros"
+      ]
+    },
+    {
+      "id": "F-007",
+      "titulo": "Planillas y documentos de legajo (uploads + Cloudflare R2)",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "POST /timesheets y POST /documents multipart con validación extensión + magic bytes, 20 MB",
+        "StorageService sobre R2 (API S3-compatible): upload, delete, URL firmada de descarga (15 min)",
+        "Timesheet: sequenceNumber por período, estados PENDING/LOADED/ERROR, reemplazo borra archivo anterior",
+        "Document: catálogo de 9 tipos, edición tipo/nombre, eliminación con borrado en el bucket",
+        "GET /catalogs con labels en español"
+      ]
+    },
+    {
+      "id": "F-008",
+      "titulo": "Auth avanzada: 2FA admin, Google OAuth + OTP WhatsApp, registro, recuperación, alta de admins",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "2FA por email en login admin (código 6 dígitos, 10 min, 5 intentos)",
+        "Login mobile con identifier+password exige OTP WhatsApp tras validar credenciales (202 + challengeId; tokens solo vía /auth/otp/verify)",
+        "POST /auth/google verifica id_token y dispara OTP WhatsApp (Meta Cloud API)",
+        "POST /auth/register con unicidad + OTP WhatsApp; al verificar OTP crea el User y envía email de verificación (magic link) sin emitir tokens",
+        "Login mobile (password y Google) con email sin verificar → 403 EMAIL_NOT_VERIFIED; GET /auth/email/verify y reenvío neutro",
+        "Recuperación con token de un solo uso; flujo admin-access-request con emails y links firmados aprobar/rechazar (Resend)",
+        "Providers Email/WhatsApp con implementación log en dev"
+      ]
+    },
+    {
+      "id": "F-009",
+      "titulo": "Dashboard: 4 métricas agregadas",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "GET /dashboard/summary con pendingTimesheets, incompleteRecords, pendingReviewRecords, recordsWithAbsences",
+        "Filtros opcionales month/year/siteId coherentes con los listados"
+      ]
+    }
+  ]
+}
