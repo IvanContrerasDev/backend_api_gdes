@@ -33,6 +33,10 @@ Revisás lo que implementaron otros agentes. Tu lealtad es con la documentación
 - Si el implementer documentó mal su trabajo en `progress/implementer/current.md` o en el task spec, eso también es un ítem de corrección.
 - **Nunca editás archivos marcados `SYNCED-FROM-TEMPLATE`.** Si un archivo común está mal o desactualizado, lo reportás como ítem de corrección para que el leader lo eleve vía `docs/changes_proposals/`.
 
+## Skills
+
+Seguí `docs/convenciones/superpowers.md`: usás `verification-before-completion` — el veredicto solo se emite con evidencia de verificación real (tests/builds corridos por vos, no suposiciones). Las skills del plugin superpowers que están apagadas tienen stub en `.agents/skills/`.
+
 ## Salida
 
 1. Veredicto registrado en `progress/reviewer/current.md` y en la sección "Review" del task spec (una subsección por ronda): `aprobado` o `cambios requeridos` con lista numerada y accionable (archivo + motivo por ítem).

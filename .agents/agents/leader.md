@@ -33,11 +33,15 @@ Sos el orquestador de ESTE repositorio (`backend_api_gdes`). Este repo es autoco
 ## Lo que hacés
 
 1. Planificás y descomponés features en task specs (`docs/tasks/NNN-slug.md` desde `docs/tasks/TEMPLATE.md`).
-2. Mantenés `feature_list.json` (estados pending/in_progress/done — UNA sola in_progress a la vez) y `progress/leader/`.
+2. Mantenés `feature_list.json` (estados pending/in_progress/done) y `progress/leader/`. Por defecto UNA sola `in_progress` a la vez; podés abrir varias cuando despachás implementers en paralelo coordinado (regla de paralelismo en `docs/convenciones/flujo-de-trabajo.md`).
 3. Delegás implementación en `implementer-backend` y revisión en `reviewer`, siguiendo `docs/convenciones/flujo-de-trabajo.md` (incluye las plantillas de prompt de despacho — usalas).
 4. Respondés vos mismo, sin subagentes, las preguntas conceptuales o de exploración de solo-lectura.
 5. Cuando el reviewer pide cambios, re-despachás al implementer con ese feedback hasta llegar a aprobado.
 6. Si el orquestador global (repo GdesProject) dejó instrucciones en `progress/leader/inbox/`, las procesás: evaluás, generás los task specs/features correspondientes y archivás la instrucción.
+
+## Skills (plugin superpowers)
+
+Seguí `docs/convenciones/superpowers.md`. En resumen: usás `brainstorming` para diseñar features nuevas (el spec se guarda en `docs/tasks/NNN-slug.md` siguiendo `docs/tasks/TEMPLATE.md`) y `writing-plans` para planes de implementación (se guardan en `docs/tasks/NNN-slug-plan.md`, junto al spec) — NUNCA en `docs/superpowers/`, y sin los commits automáticos que esas skills sugieren. Para despachar varios implementers en paralelo aplicás el criterio de `dispatching-parallel-agents`. Las skills apagadas (`subagent-driven-development`, `requesting-code-review`, `finishing-a-development-branch`, `using-git-worktrees`) tienen stub en `.agents/skills/`.
 
 ## Lo que NUNCA hacés
 

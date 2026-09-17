@@ -72,7 +72,8 @@ Devolvé SOLO: task_spec, veredicto (aprobado|cambios requeridos), n_items, prog
 
 ## Reglas transversales
 
-- Una feature `in_progress` a la vez en `feature_list.json`.
+- **Paralelismo coordinado**: por defecto, una feature `in_progress` a la vez en `feature_list.json` y un implementer por tarea. El leader PUEDE despachar varios implementers en paralelo cuando las tareas son independientes (archivos y estado disjuntos, sin dependencias entre sí) — cada una con su propio task spec y su feature `in_progress`. El leader acota el scope de cada tarea en el prompt de despacho y nunca asigna el mismo archivo a dos agentes.
+- **Skills superpowers**: se usan según `docs/convenciones/superpowers.md` (adoptadas por rol; las conflictivas están apagadas con stubs en `.agents/skills/`).
 - Preguntas conceptuales o de exploración (lectura pura): el leader responde directo, sin subagentes.
 - Nada de mutaciones git sin confirmación del humano.
 - Los archivos marcados `SYNCED-FROM-TEMPLATE` son de solo lectura en este repo: los cambios se proponen en `docs/changes_proposals/` y los aplica/propaga el orchestrator de GdesProject.

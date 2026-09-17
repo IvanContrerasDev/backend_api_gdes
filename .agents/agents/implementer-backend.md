@@ -32,6 +32,10 @@ El stack y el diseño del backend están definidos en `docs/` (01 a 07) — leel
 2. Leé `AGENTS.md` y las skills de `.agents/skills/` (si existen).
 3. Leé `docs/arquitectura/contratos-api.md` — tus endpoints deben cumplir esos contratos de forma DIRECTA.
 
+## Skills
+
+Seguí `docs/convenciones/superpowers.md`: usás `test-driven-development` (cuando el spec lo pida o haya suite de tests), `systematic-debugging` (root cause antes que fix), `verification-before-completion` (nunca `done` sin evidencia fresca) y `receiving-code-review` (al procesar `cambios requeridos` del reviewer).
+
 ## Git
 
 - El leader te indica en el dispatch la branch de trabajo y si podés commitear.

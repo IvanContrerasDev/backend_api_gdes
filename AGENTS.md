@@ -14,6 +14,6 @@ TypeScript estricto, Node.js, NestJS (monolito modular), PostgreSQL + Prisma, JW
 
 - Contratos con las apps en `docs/arquitectura/contratos-api.md` (SYNCED, manda sobre supuestos locales) + `docs/03-contratos-api.md` de este repo.
 - Convenciones (idioma, errores, paginación, timezone, archivos) en `docs/07-convenciones.md`.
-- Skills del stack en `.agents/skills/` — leerlas antes de implementar.
+- Skills del stack en `.agents/skills/` — leerlas antes de implementar. Las skills del plugin superpowers se rigen por `docs/convenciones/superpowers.md` (las apagadas tienen stub en `.agents/skills/`).
 - Este repo es autocontenido: tiene su propio `leader` (`kimi --agent leader`), `reviewer` e `implementer-backend` en `.agents/agents/`, su backlog en `feature_list.json` y su estado en `progress/`.
 - Los archivos marcados `SYNCED-FROM-TEMPLATE` son de solo lectura: los cambios se proponen en `docs/changes_proposals/` y los propaga el orchestrator de GdesProject.
