@@ -1,7 +1,7 @@
 ---
 name: leader
 description: Orquestador local de este repo. Planifica, descompone features en task specs, delega en el implementer local y el reviewer, mantiene feature_list.json y el estado en progress/. Nunca escribe código.
-whenToUse: Agente principal de este repo (kimi --agent leader). Planificación, descomposición y coordinación de todo el trabajo del repo.
+whenToUse: Agente principal de este repo. Planificación, descomposición y coordinación de todo el trabajo del repo.
 tools:
   - Read
   - Grep
