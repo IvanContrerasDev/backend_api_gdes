@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). No incluye asistencia/archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; los enums Prisma todavía incluyen REJECTED, cuya eliminación corresponde al dominio de asistencia. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; no incluye asistencia/archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; los enums Prisma todavía incluyen REJECTED, cuya eliminación corresponde al dominio de asistencia. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -44,6 +44,8 @@ NO existe asignación fija `User ↔ Workplace` (spec §8): la relación es indi
 | role | UserRole | required | Ver enums |
 | accountStatus | AccountStatus | default ACTIVE | INACTIVE bloquea todo acceso y operación (spec §6/§11.4) |
 | emailVerifiedAt | timestamp? | nullable | `null` hasta confirmar el email (magic link del registro mobile). Sin verificar → login bloqueado (403 `EMAIL_NOT_VERIFIED`) |
+
+Unicidad email normalizada implementada por índice PostgreSQL lower(trim(email)), además del índice Prisma original. La migración no fusiona ni borra identidades históricas en conflicto. Campos nullables de perfil actualizables desde PATCH users; fechas validadas en GMT-3.
 
 Nunca se elimina: se desactiva. Empleado creado por admin queda habilitado inmediato, sin verificación de email (`emailVerifiedAt` se setea en el alta) ni cambio de contraseña obligatorio (spec §11.1).
 

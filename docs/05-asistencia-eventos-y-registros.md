@@ -30,7 +30,7 @@ Decisión humana vigente: online usa hora efectiva del servidor. En el flujo off
 
 Procesar en orden de recepción, sin reconstruir intervalos ordenándolos por hora cliente. Se conserva la ventana offline aprobada de hasta 24 h; la aclaración humana no la retiró. No se exige conexión para toda marcación. La comprobación del reloj al sincronizar limita el adelanto actual, pero no demuestra por sí sola cuándo ocurrió la marcación original.
 
-Pendientes técnicos al preparar F-005: DTO exacto para distinguir online/offline y timestamp del fix GPS; comportamiento ante reloj actual atrasado (no imponer diferencia absoluta de dos minutos por suposición); salida offline anterior a una entrada abierta recibida antes, sin producir minutos negativos ni reconstruir históricos. Rechazo de adelanto actual >2 min usa INVALID_TIMESTAMP, con frontera inclusiva a probar. No publicar integración hasta materializar estos puntos.
+Preparación F-005: clientSentAt presente distingue offline y exige occurredAt; sin clientSentAt se asigna hora online del servidor. No imponer límite simétrico al reloj atrasado. El último WORK OPEN es el último creado por recepción/proyección, no el de mayor hora original. locationTimestamp se conserva como metadata del fix, sin convertirlo en hora efectiva. Rechazo del adelanto actual >2 min usa INVALID_TIMESTAMP; frontera inclusiva a probar. Pendiente humano: salida offline anterior a la entrada abierta recibida antes (conservar SEMI_CLOSED/PENDING o rechazar), sin minutos negativos ni reconstrucción. No publicar integración hasta implementar y cerrar ese caso.
 
 ## Validaciones GPS (spec §16/§33.3/§47)
 

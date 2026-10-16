@@ -27,7 +27,7 @@ La migración de estructura usa índices PostgreSQL por expresión para garantiz
 
 Auth cubre OTP mobile/2FA web, CSRF/Origin, cookies y separación de transporte, límites persistidos, expiración mobile deslizante/web absoluta, logout/reuso/rotación concurrentes y la ausencia de deadlock al desactivar. La suite no certifica aún navegador, proveedores externos ni producción: el boot en NODE_ENV=production rechaza log providers hasta F-008.
 
-En sandboxes donde la ejecución elevada cambia de uid, compilar y lint sin elevación y ejecutar solo los tests con permiso de sockets; evita que dist quede con otro propietario:
+No ejecutar un watcher de desarrollo sobre el mismo dist mientras se compila/prueba: el contenedor gdes-api con bind mount recompila automáticamente y puede generar artefactos con otro propietario. Pausar temporalmente ese watcher y reanudarlo al terminar. En sandbox, compilar/lint normalmente y conceder permiso de sockets solo al proceso de tests:
 
 ```bash
 npm run build

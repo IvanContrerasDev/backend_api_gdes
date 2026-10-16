@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Los demás dominios siguen pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Asistencia, archivos, dashboard y auth avanzada siguen pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -237,3 +237,11 @@ Estructura cerrada tras revisión independiente: build/lint y 8/8 pruebas HTTP/P
 Las rutas de password-login y sesiones de 04 están registradas bajo `/api/v1/auth`; OTP/2FA obligatorio, sin bypass. Registro, Google, magic link, password-recovery/reset y admin-access-request siguen pendientes F-008. `/auth/otp/verify` acepta solo LOGIN en esta etapa; no simula REGISTER/GOOGLE_LOGIN.
 
 Web exige bootstrap GET csrf y Origin/X-CSRF-Token para login/2FA y mutaciones, refresh solo cookie, access solo JSON; GET csrf después de autenticar obtiene token de sesión renovado. Login ADMIN con sesión activa requiere logout previo. Mobile refresh responde únicamente tokens. Logout mobile revoca sesión del access; web revoca cadena de cookie. Errores de parser JSON 400 se traducen al español, sin alterar ApiException de dominio. Auth incluye no-store aun en errores. Verificación HTTP/DB y entorno en test/README.md; no equivale a pruebas de navegador ni proveedores reales.
+
+## Implementación de empleados y perfil
+
+`src/modules/users/` implementa P-06: ADMIN/SUPER_ADMIN gestionan exclusivamente EMPLOYEE, sin DELETE ni gestión de roles/contraseñas por PATCH; perfil devuelve solo identidad EMPLOYEE autenticada. Listas/detalle usan selecciones explícitas, sin passwordHash, role o contraseña inicial, con SiteReference y fechas civiles YYYY-MM-DD. Búsqueda literal parcial case-insensitive en campos publicados, orden lastName/firstName/id y snapshot consistente de listado/total.
+
+Alta ACTIVE, contraseña Argon2 y emailVerifiedAt al crear. Política únicamente local (04); no hay mensajes ni llamadas de red al crear empleado. PATCH conserva omitidos y admite null solo en cuil/hireDate/position. Valida fechas civiles reales/no futuras en GMT-3, incluyendo bisiestos y rechazo de año0000. Un índice SQL lower(trim(email)) garantiza unicidad global frente a legado; migración falla ante colisiones históricas sin fusionar/borrar identidades. DNI y legajo conservan constraints globales y errores específicos incluso concurrentes.
+
+Desactivar bloquea User y revoca todas sus sesiones en una transacción, compatible con refresh y OTP; reactivar no restaura sesiones. Cierre F-004 aprobado por reviewer independiente: build/lint y 38/38 pruebas HTTP/PostgreSQL (auth14, estructura8, users16), sin observaciones abiertas. Comandos y entorno en test/README.md.

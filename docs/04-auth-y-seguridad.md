@@ -16,7 +16,7 @@
 - Hash con **Argon2**.
 - Política aprobada P-06 compartida: 12–128 caracteres, admite espacios y Unicode, sin reglas obligatorias de mayúsculas/símbolos; backend rechaza comunes/comprometidas. La validación actual de mobile difiere y deberá migrar, sin trasladarla como contrato vigente.
 - Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email — `emailVerifiedAt` se setea en el alta (spec §11.1).
-- Comprobación ratificada para esta etapa: lista local de contraseñas comunes/comprometidas conocidas, sin consulta externa a HIBP. La lista local debe versionarse con sus pruebas; no garantiza cubrir todas las filtraciones. Mantenerla actualizada es una limitación operativa explícita.
+- Comprobación local implementada: corpus SecLists10k versionado con commit/checksum/LICENCIA en resources/passwords. Compara NFKC, case, espacios y sufijos simples sin cambiar el secreto original para Argon2; 12–128 puntos de código Unicode. Sin HIBP ni llamadas de red. No cubre todas las filtraciones; mantener lista actualizada es una limitación operativa explícita.
 - La contraseña nunca se puede revisualizar (§11.1).
 
 ## Flujos

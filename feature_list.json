@@ -57,14 +57,15 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
         "CRUD de users sin delete, con unicidad email/legajo/DNI",
         "PATCH /users/{id}/account-status con accountStatus para activar/desactivar",
         "GET /profile con los campos de PerfilScreen",
         "Búsqueda parcial y orden default apellido+nombre"
-      ]
+      ],
+      "documentation": "docs/03-contratos-api.md"
     },
     {
       "id": "F-005",
@@ -73,7 +74,7 @@
         "backend"
       ],
       "estado": "pending",
-      "taskSpec": null,
+      "taskSpec": "docs/tasks/F-005-backend-attendance.md",
       "criterios": [
         "POST /attendance/events persiste AttendanceEvent y proyecta record/intervals en una transacción",
         "Idempotencia por clientRequestId (reintentos sin duplicar)",

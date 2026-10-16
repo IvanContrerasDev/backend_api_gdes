@@ -1,3 +1,4 @@
+import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { StructureModule } from './modules/structure/structure.module';
 import { Module, ValidationPipe } from '@nestjs/common';
@@ -19,6 +20,7 @@ import { HealthController } from './health/health.controller';
     PrismaModule,
     StructureModule,
     AuthModule,
+    UsersModule,
   ],
   controllers: [HealthController],
   providers: [

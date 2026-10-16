@@ -1,3 +1,3 @@
 # Estado actual — implementer
 
-Sin tarea activa. F-002 aprobada; verificación y comandos en docs/04 y test/README.md. Orden de locks para integración User→Session; verify Challenge→User→nuevaSession. Sin correcciones abiertas.
+Sin tarea activa. F-004 aprobada y consolidada en docs/03, política local en docs/04. Build/lint y38/38 pruebas HTTP/PostgreSQL; imagen Docker/corpus/Argon2 verificados. Sin correcciones abiertas.
