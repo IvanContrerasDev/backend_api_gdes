@@ -41,3 +41,5 @@ Estas skills duplican roles del harness o violan sus reglas. Hay un stub con el 
 1. Ninguna skill escribe en `docs/superpowers/` ni `.superpowers/`: los artefactos van a `docs/tasks/` (specs y planes) o a `progress/` (estado de trabajo).
 2. Ninguna mutación git que sugiera una skill se ejecuta sin confirmación explícita del humano.
 3. Si una skill pide despachar subagentes, solo el leader puede hacerlo, y solo con los roles del harness (implementer, reviewer, explore, plan).
+
+4. Specs, planes y revisiones son temporales: consolidar decisiones vigentes con racional breve en docs oficiales y eliminar artefactos cerrados según `convenciones-globales.md`. No crear historiales aunque una skill los sugiera. El código sirve para resolver ambigüedad sobre comportamiento real; no ratifica cambios de producto pendientes.

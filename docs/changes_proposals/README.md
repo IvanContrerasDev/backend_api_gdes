@@ -1,36 +1,19 @@
-# Propuestas de cambio al conocimiento común (changes_proposals)
+<!-- SYNCED-FROM-TEMPLATE: gestionado desde GdesProject/template/. NO EDITAR en este repo; proponé cambios en docs/changes_proposals/. -->
 
-Los archivos comunes marcados `SYNCED-FROM-TEMPLATE` (agentes `leader`/`reviewer`/`implementer-*`, `docs/arquitectura/`, `docs/convenciones/`, `docs/tasks/TEMPLATE.md`) **NO se editan en este repo**. Se gestionan desde el template del repo `GdesProject` y se propagan con `scripts/sync-template.sh`.
+# Propuestas temporales de cambio común
 
-## Cómo proponer un cambio
+Los archivos SYNCED se gestionan desde `GdesProject/template/`. Este directorio solo contiene propuestas **pendientes**; su README es una copia SYNCED.
 
-Cualquier agente del repo (leader, implementer, reviewer) que detecte que un archivo común está mal, desactualizado o incompleto crea un archivo:
+## Crear
 
-```
-docs/changes_proposals/YYYYMMDD-slug.md
-```
+Archivo `YYYYMMDD-slug.md` con origen, estado pendiente, documento/sección canónica de destino, problema actual, cambio preciso y motivo breve. Separar lo que requiere decisión de lo ya acordado; enlazar el contrato o código en vez de copiarlo. No atribuir aprobación a un mock.
 
-con este formato:
+## Resolver y eliminar
 
-```markdown
-# Propuesta: <título>
+1. El orchestrator contrasta evidencia y decisiones humanas; consulta únicamente los puntos que sigan abiertos.
+2. Incorpora lo aprobado al documento canónico en `template/` (y coordina detalle local cuando corresponda), reemplazando la definición anterior y dejando el motivo breve. No guardar la propuesta como fuente alternativa del contrato.
+3. Ejecuta `scripts/sync-template.sh push` y `scripts/sync-template.sh --check`; revisa coherencia y enlaces de los tres repos.
+4. Tras verificar incorporación y sincronización, **elimina la propuesta resuelta** y actualiza sus referencias hacia la sección oficial. No conservar archivos `aplicada`, `rechazada`, copias o archivos históricos.
+5. Si solo se resuelve una parte, reducir la propuesta a los puntos abiertos con enlace a la definición oficial; eliminar preguntas ya contestadas. Una negativa se comunica al solicitante y solo su regla vigente y motivo útil quedan en el documento correspondiente.
 
-**Fecha:** YYYY-MM-DD
-**Origen:** <repo> / <agente que propone>
-**Estado:** pendiente | aplicada | rechazada
-
-## Archivo(s) común(es) afectado(s)
-- docs/convenciones/convenciones-globales.md
-
-## Problema
-<Qué está mal o qué falta.>
-
-## Cambio propuesto
-<Texto propuesto o descripción precisa del cambio.>
-```
-
-## Qué pasa después
-
-El **orchestrator** del repo `GdesProject` lee periódicamente los `changes_proposals/` de todos los subrepos, aplica las propuestas aprobadas en `template/`, las marca como `aplicada` (o `rechazada` con motivo) y propaga el template con `scripts/sync-template.sh`. Así todos los repos reciben el mismo cambio y no hay desincronización.
-
-Este directorio (`docs/changes_proposals/`) es de escritura local; solo el `README.md` es SYNCED.
+El trabajo de implementación pendiente se mantiene en backlog/estado actual; no justifica conservar una propuesta ya incorporada.

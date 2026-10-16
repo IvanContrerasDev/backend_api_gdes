@@ -1,251 +1,533 @@
 <!-- SYNCED-FROM-TEMPLATE: gestionado desde GdesProject/template/. NO EDITAR en este repo; proponé cambios en docs/changes_proposals/. -->
 
-# Contratos entre apps — fuente de verdad de integración
+# Contratos entre apps
 
-> Regla: cuando mobile o admin hablen con el backend, los nombres, tipos y formas de estos contratos mandan. Cambiar un contrato exige actualizar este archivo EN LA MISMA TAREA y avisar al leader.
+## Alcance y disponibilidad
 
-## Estado actual
+Fuente canónica de los acuerdos de integración: una sección vigente por tema, con motivo breve. Los tres subrepos reciben copias idénticas desde `GdesProject/template/`. El detalle interno del backend vive en sus docs 02–07; las specs locales enlazan este contrato y no redefinen DTOs comunes.
 
-**Diseño base definido (2026-09-15); materialización contractual incompleta al 2026-10-12.** El backend documenta stack, modelo, auth, asistencia e integraciones, pero `backend_api_gdes/docs/03-contratos-api.md` aún contradice decisiones ratificadas después (P-01..P-07 y F-006). Mobile y admin siguen operando con mocks; la disponibilidad del backend de integración no se infiere de estos documentos.
+**Estado comprobado en código al 2026-10-16:** mobile opera con mocks y sesión local; Admin tiene aplicación React con adaptadores mock/HTTP y módulos operativos mock; backend tiene bootstrap NestJS/Prisma, modelos User/Site y únicamente `GET /health`. `src/app.module.ts` no registra módulos de dominio y `src/main.ts` no aplica prefijo `/api/v1`. Las rutas de dominio de este documento son **diseño acordado pendiente de implementación**, no API disponible. La integración real y sus pruebas siguen pendientes.
 
-Este archivo es el **índice de contratos y registro de decisiones de integración**. El detalle endpoint-por-endpoint y los DTOs aprobados deben quedar materializados en `backend_api_gdes/docs/03-contratos-api.md`; mientras exista una divergencia, prevalecen las decisiones humanas de este archivo y la propuesta ratificada que la documenta.
+Brechas de implementación: Prisma conserva `REJECTED` en enums de revisión, mientras el contrato lo excluye; su DocumentType usa INTERNAL_RULES frente a INTERNAL_POLICIES del mock Admin, sin mapping ratificado; Admin usa el enum de revisión de registro también en intervalos. Mobile conserva campos y respuestas locales distintos. No convertir esas diferencias en decisiones aprobadas ni modificar producto en una limpieza documental.
 
-## Decisiones de integración (resueltas por el humano, 2026-09-15)
+## Convenciones
 
-Estas resoluciones cierran las divergencias que estaban abiertas. Mandan sobre mobile y sobre las sugerencias de la spec de admin (Parte 8), que eran propuestas de un agente, no contratos cerrados.
+- Base diseñada `/api/v1`; JSON con campos en inglés e interfaz y `error.message` en español. IDs de entidades UUID; timestamps ISO 8601 UTC; fechas civiles `YYYY-MM-DD` en GMT-3.
+- Éxito `{ data: T }`; listas `{ data: T[], pagination: { page, pageSize, totalItems, totalPages } }`; error `{ error: { code, message, retryable } }`. El frontend considera también HTTP status, no solo `retryable`.
+- `employeeId` en un usuario es su legajo string; en queries de recursos es UUID de User cuando se indica como filtro de empleado. No intercambiarlos.
+- No exponer passwords/hashes, claves privadas de archivos o refresh web en respuestas de recursos.
+- `UserRole = EMPLOYEE | TO_BE_ADMIN | ADMIN | SUPER_ADMIN`; mobile admite únicamente EMPLOYEE (otros → `403 ROLE_NOT_ALLOWED`); Admin admite ADMIN/SUPER_ADMIN. INACTIVE bloquea operaciones nuevas y conserva lectura histórica. Admin puede realizar cargas retrospectivas como corrección histórica; revalidar permisos y estado al guardar. No hay desactivación en cascada.
 
-1. **Campos del usuario/empleado → inglés en contrato, español en interfaz.** Todo el código y los contratos en inglés (`firstName`, `lastName`, `employeeId`); todo lo visible en UI en español (obligatorio), incluidos `error.message` y labels de catálogos. La relación legajo/`employeeId` es correcta tal cual. Mobile debe migrar `AuthUser { nombre; apellido; legajo }` → `{ id; firstName; lastName; email; employeeId; role }`.
-2. **Modelo del registro horario → eventos atómicos + proyección a registro diario.** Mobile emite eventos (`CHECK_IN`/`CHECK_OUT`/`ABSENCE`, un timestamp por evento); el backend los persiste append-only (`AttendanceEvent`) y proyecta el registro diario por `(userId, workplaceId, date)` con múltiples intervalos (algoritmo spec §23). Detalle: `backend_api_gdes/docs/05-asistencia-eventos-y-registros.md`.
-3. **Formato de respuesta → envoltorio `{ "data": ... }`** para todos los endpoints (listados: `{ "data": [], "pagination": {} }`). Mobile migra sus `{ success, message, registrationId? }` a `{ data: { eventId, recordId, message } }`.
-4. **Formato de error → `{ error: { code, message, retryable } }`** (la sugerencia de admin, que el humano prefiere). `code` SCREAMING_SNAKE en inglés, `message` en español, `retryable` coherente con HTTP status. Catálogo de códigos: `backend_api_gdes/docs/07-convenciones.md`.
-5. **Referencia al lugar en cargas documentales → siempre `workplaceId`.** Planillas: requerido (spec §39.3). Contingencia: `workplaceId: string | null`. Mobile migra `DocumentUploadRequest.workplace` → `workplaceId`.
-6. **Roles → `UserRole { EMPLOYEE, TO_BE_ADMIN, ADMIN, SUPER_ADMIN }`** (TO_BE_ADMIN como rol explícito, spec §10). A la app mobile solo accede rol `EMPLOYEE` (otro rol → 403 `ROLE_NOT_ALLOWED`). `AuthUser` gana el campo `role`.
-7. **Verificación en auth mobile (2026-09-16).** Todo login mobile — identifier+password y Google — exige OTP WhatsApp como segundo paso (`/auth/login` y `/auth/google` responden 202 + `challengeId`; los tokens solo salen de `/auth/otp/verify`). El registro mobile exige OTP WhatsApp + verificación de email por magic link: tras el OTP la cuenta queda creada pero sin tokens, bloqueada para login (403 `EMAIL_NOT_VERIFIED`) hasta confirmar el email. Admin web mantiene 2FA por código de email en login y registro (sin cambios). Detalle: `backend_api_gdes/docs/04-auth-y-seguridad.md`.
+Motivo: mantener identidad y semántica iguales entre consumidores sin exponer modelos privados de persistencia.
 
-## Decisiones de integración (confirmadas por el humano, 2026-09-17)
+## Autenticación mobile
 
-Origen: propuestas `admin_web_app/docs/changes_proposals/20260917-p01..p05-*.md`. Primera ronda (mañana del 2026-09-17): solo decisiones ya confirmadas. Segunda ronda (misma fecha): el humano ratificó los diseños candidatos que abajo se marcan como **ratificado**. Lo que sigue pendiente se indica explícitamente y no es contrato.
+- Usuario público: `{ id, firstName, lastName, email, employeeId, role }`. Mobile debe migrar los actuales `nombre/apellido/legajo` de `stores/authStore.ts` y su sesión AsyncStorage sin tokens.
+- Login por identifier/password (`POST /auth/login`) o Google (`POST /auth/google`) responde 202 con challenge; ambos exigen OTP WhatsApp. Tokens solo tras `POST /auth/otp/verify`.
+- Registro: OTP WhatsApp más email por magic link. Tras OTP existe cuenta sin tokens; login devuelve `403 EMAIL_NOT_VERIFIED` hasta confirmar email.
+- Refresh mobile permanece en JSON mediante `/auth/refresh`, con almacenamiento seguro al implementar. No reutilizar transporte web.
 
-8. **Consulta mensual de registros (P-01) — ratificado 2026-09-17.** La revisión de registros del mes usa una **matriz empleado–lugar**: solo filas con actividad en el mes (una ausencia cuenta como actividad; no se sintetizan filas sin actividad y no hay asignaciones permanentes) y paginación por **filas completas** — una página nunca corta una fila y cada fila trae los 28/29/30/31 días del mes. Detalle de intervalos/metadata bajo demanda al abrir el detalle, nunca una request por celda. Aprobado además:
-   - Ruta `GET /api/v1/records/monthly` (ADMIN/SUPER_ADMIN): `month`+`year` obligatorios, `page` base 1, `pageSize` default 50 / máximo 100. Los tipos de la propuesta P-01 (`MonthlyQuery`, `Day`, `MonthlyRow`, `MonthlyResponse` con `meta.snapshotToken/snapshotExpiresAt/totals`) quedan aprobados tal cual; backend los materializa en `backend_api_gdes/docs/03-contratos-api.md`.
-   - `siteId` filtra por la provincia **del lugar** (no la personal del empleado). Filtros de estado/revisión/origen/ausencia: conjunción sobre UN MISMO registro diario; la fila devuelve todos sus días, los no coincidentes con `matchesFilters=false` (no permiten crear duplicados). Totales de fila y totales globales sobre TODAS las filas seleccionadas, no solo la página.
-   - Orden fijo: apellido, nombre, nombre de lugar, UUID de empleado, UUID de lugar; la collation la define backend.
-   - **Snapshot de lectura** opaco ligado a usuario/filtros/orden, **TTL 15 minutos**: la primera página lo crea, las siguientes lo envían. Errores `410 MONTHLY_SNAPSHOT_EXPIRED` y `400 MONTHLY_SNAPSHOT_MISMATCH`, ambos `retryable=false` (caducidad → reiniciar desde página 1). Crear sobre un día EMPTY puede recibir `409 RECORD_ALREADY_EXISTS` por escritura posterior al snapshot: recuperar el registro, nunca sobrescribir. El snapshot no autoriza escrituras: el POST revalida unicidad y permisos actuales.
-   - Evidencia pendiente de backend (ejecución, no decisión): ejemplos de febrero bisiesto, mes de 31 días, filas mixtas, cero filas, dos páginas y escritura concurrente.
-9. **Sesión web admin (P-02) — parcialmente ratificado 2026-09-17.** Aprobado: refresh web en **cookie HttpOnly emitida por el backend**, access token **solo en memoria**; rutas nuevas `/auth/web/csrf`, `/auth/web/session`, `/auth/web/refresh`, `/auth/web/logout`; el login existente solo gana `rememberSession` con `client=ADMIN`; la respuesta 2FA web no lleva refresh en JSON; `sessionExpiresAt` es un límite absoluto que no se reinicia al rotar; ante respuesta de refresh perdida/ambigua → **relogin** (no se relaja la detección de reuso); mobile conserva su refresh en JSON sin cambios. Los tipos candidatos de P-02 quedan aprobados como base. Pendientes: orígenes exactos de CORS/cookies (se definen al momento del deploy), atributos definitivos de cookie, identificador de generación de sesión y mecanismo CSRF exacto (backend los propone y el humano los ratifica), y las pruebas de navegador de F-010.
-10. **Solicitud de acceso admin (P-03) — ratificado 2026-09-17.** Ninguna creación de cuenta ni cambio de rol ocurre antes de **verificar el email** del solicitante; el formulario preserva los **diez campos** (nombre, apellido, email, contraseña, teléfono, DNI, legajo, domicilio, provincia, nacimiento). Aprobado además:
-    - Se **amplía la ruta existente** `POST /auth/admin-access-request` (sin versionar). Challenge con código de 6 dígitos: **TTL 10 min, máximo 5 intentos, cooldown de reenvío 60 s**. Payload pendiente sin verificar: se elimina a las **72 h**. Link de decisión (aprobar/rechazar): expira a los **7 días**, GET solo muestra UI y exige confirmación explícita antes del POST; token de un solo uso.
-    - Cuenta existente: se exige **contraseña actual** además del OTP; se preservan perfil y password (no se reemplazan por el del formulario). Email/DNI/legajo en conflicto con otra cuenta → `409 ADMIN_REQUEST_IDENTITY_CONFLICT`, sin fusionar. Discrepancias en datos no identitarios → advertir tras verificar y continuar, sin sobrescribir. Cuenta que pasa a INACTIVE con decisión pendiente → solicitud **cancelada**. Respuestas neutrales: nunca revelar existencia de cuentas ni rol antes de verificar.
-    - Los tipos candidatos de P-03 quedan aprobados como base; backend publica DTOs completos, respuestas neutrales y catálogo de errores (`403 ADMIN_REQUEST_NOT_ELIGIBLE`, etc.).
-11. **Registros, entidades y archivos (P-04) — ratificado 2026-09-17.**
-    - **Completitud y proyección (B)**: WORK con ambos extremos → CLOSED, aporta la diferencia en minutos, COMPLETE si es único intervalo; WORK con un solo extremo → OPEN/SEMI_CLOSED, aporte 0, INCOMPLETE. ABSENCE sin extremos o con ambos → CLOSED, aporte 0, COMPLETE; con un solo extremo → OPEN/SEMI_CLOSED, aporte 0, INCOMPLETE. Total del registro = **suma de WORK CLOSED**; no existe campo de horas de ausencia. **Medianoche**: jornada que cruza 00:00 GMT-3 → dos registros (día A OPEN, día B SEMI_CLOSED; ambos INCOMPLETE, 0 minutos cerrados); sin cierre ni fusión automática. Algoritmo vigente: entrada agrega intervalo, salida cierra el último abierto del mismo registro diario; la suma incluye solapamientos (09:00/11:00/12:00/18:00 → **600 minutos**; corrige el ejemplo contradictorio de la spec §23).
-    - **Escrituras (A)**: `POST /records` crea completo; `PATCH /records/{id}` corrige. Concurrencia por **`expectedVersion`** en el body → `409 RECORD_VERSION_CONFLICT` (`retryable=false`); la UI conserva el formulario y ofrece recargar/comparar, nunca sobrescribe. Operaciones de intervalo ADD/UPDATE; la operación DELETE ratificada se especifica en la decisión 13. PATCH omitido conserva, null borra solo nullables; identidad empleado/lugar/fecha **inmutable** en PATCH. En carga manual se **rechazan intervalos solapados** (los históricos proyectados no se tocan) y no se aceptan WORK sin ambos extremos ni registros sin intervalos. Motivo de ausencia **opcional** también en carga manual (los null se muestran como "sin motivo", sin inventarlo).
-    - **Revisión**: la aprobación es una operación pura que conserva origen, horarios y eventos; no existe estado `REJECTED`. La corrección manual cambia la proyección a `MANUAL_LOADED`; luego puede aprobarse. La metadata de `AttendanceEvent` es inmutable: la edición manual no crea, actualiza ni borra eventos.
-    - **Inactividad e historia (D)**: INACTIVE bloquea operaciones nuevas; la lectura histórica siempre se conserva; las **cargas retrospectivas** (registro de fecha pasada, planilla atrasada, documento) se permiten como corrección histórica; desactivación requiere confirmación y revalidación del estado al guardar.
-    - **Archivos y búsquedas (E)**: **20 MiB (20 × 1024 × 1024 bytes)** por archivo, máximo 10 por request, extensiones pdf/jpg/jpeg/png/doc/docx/txt (backend valida contenido además de extensión); lote **atómico** con rollback de DB y bucket si algo falla; búsqueda por fileName y nombre/apellido/legajo del empleado; descarga con URL firmada de 15 min (vigente), sin persistir URLs vencidas; borrar documento sí, borrar planilla no.
-    - **Métricas de Inicio (F)**: contadores del **mes seleccionado** (el dashboard tiene selector de mes y los enlaces llevan a la vista filtrada del mismo período): `pendingTimesheets`, `incompleteRecords`, `pendingReviewRecords`, `recordsWithAbsence` (registros con al menos una ABSENCE, no intervalos ni horas).
-    - Tarea de backend (ejecución): materializar DTOs completos por recurso (users/clients/sites/workplaces/records/catalogs/timesheets/documents), política de contraseña compartida, validaciones (teléfono 10–13 dígitos, DNI 7–8), allowlists de filtros/sort, ejemplos y pruebas de concurrencia.
-12. **Mapa de lugares de trabajo (P-05) — decisión humana actualizada 2026-09-18.** Admin usa **Google Maps Platform**: Maps JavaScript API y Places API (New), con `PlaceAutocompleteElement`, restringido a Argentina. Carga directa desde navegador con `VITE_GOOGLE_MAPS_API_KEY` pública, restringida por HTTP referrer y por API; no requiere proxy. Autocomplete solo centra/encuadra: la ubicación se confirma con clic, arrastre del marcador o coordenadas numéricas. Se persisten solo `latitude`, `longitude`, `radiusMeters` y `gpsAccuracyThreshold`; no dirección, Place ID, predicciones, viewport ni resultados de geocoder. Marker y Circle se sincronizan; atribución Google visible; no fallback a proveedores OSM públicos. Contrato HTTP de Workplace sin campos de ubicación textual. El costo/free tier citado al decidir es una estimación histórica y debe verificarse al configurar billing.
-13. **Aprobación y corrección de intervalos (F-006) — ratificado 2026-09-19.** `ReviewStatus = NONE | PENDING | APPROVED | MANUAL_LOADED`; `IntervalReviewStatus = NONE | PENDING | APPROVED`. La aprobación pura usa `PATCH /api/v1/records/{id}/review` con `{ expectedVersion, reviewStatus: "APPROVED" }`, devuelve `{ data: RecordDetail }`, incrementa `version` y no altera origen, observaciones, horarios ni intervalos. Conflicto de versión → `409 RECORD_VERSION_CONFLICT` (`retryable=false`). La corrección `PATCH /api/v1/records/{id}` admite operación `DELETE` de un intervalo, además de ADD/UPDATE; exige `expectedVersion`, el intervalo debe pertenecer al registro y siempre debe quedar al menos uno (`422 RECORD_INTERVALS_REQUIRED`). El backend recalcula la proyección. `AttendanceEvent` sigue siendo evidencia inmutable; eliminar de la proyección no elimina eventos.
-14. **Contratos frontend de empleados (P-06) y clientes/lugares (P-07) — ratificados 2026-09-17.** Las propuestas `admin_web_app/docs/changes_proposals/20260917-p06-contrato-empleados.md` y `20260917-p07-contrato-clientes-lugares.md` son la fuente de los DTOs/rutas/validaciones/errores aprobados para Admin. El backend debe materializar/alinear `GET/POST/PUT/PATCH` de `/users`, `/clients`, `/workplaces` y `/sites` allí definidos, incluidos estados, filtros, paginación, referencias y límites geográficos: `radiusMeters` entero entre 10 y 10.000; `gpsAccuracyThreshold` nullable, entero entre 1 y 1.000. No exponer `passwordHash`; no agregar dirección/Place ID al DTO Workplace. Hasta que backend actualice el doc 03, no afirmar que estos contratos están disponibles en API real.
-15. **Detalle de registros y eventos (F-006) — aprobado para mocks el 2026-09-19.** Al abrir registro: `GET /api/v1/records/{id}` devuelve detalle, intervalos y referencias livianas a eventos automáticos; `GET /api/v1/attendance-events/{id}` devuelve metadata bajo demanda. Intervalos manuales no sintetizan eventos. La metadata es de solo lectura. La forma exacta de los DTOs publicados en la propuesta `20260919-f006-detalle-registro-eventos.md` debe confirmarse/materializarse por backend antes de integración real.
-16. **Ventana de marcaciones offline tardías — ratificado el 2026-10-12.** El backend acepta una marcación si al recibirla han transcurrido como máximo 24 horas desde `occurredAt`: `receivedAt - occurredAt <= 24 h`, usando `receivedAt` asignado por el servidor (no un timestamp de recepción enviado por el cliente). Marcaciones más antiguas se rechazan. Backend debe materializar el error y su código en `docs/07-convenciones.md`, validar el límite y aportar pruebas de frontera para exactamente 24 horas y más de 24 horas. El manejo de timestamps futuros/clock skew no queda definido por esta decisión.
+Motivo: verificar posesión del teléfono en login y ambas vías de contacto en registro. Detalle de challenges/tokens y seguridad interna: `backend_api_gdes/docs/04-auth-y-seguridad.md` (diseño, no servicio disponible).
 
-## Contratos relevados
+## Sesión web admin
 
-> Los tipos originales de mobile (español, `{ success, message }`, etc.) quedan abajo como registro histórico del estado relevado. Los contratos vigentes son los de las decisiones anteriores + `backend_api_gdes/docs/03-contratos-api.md`.
-
-### Sesión / usuario autenticado (mobile)
-
-Fuente: `mobile_app_gdes/stores/authStore.ts`. Produce y consume: mobile (hoy solo local, persistido en AsyncStorage; no existe token). Es lo que el backend deberá devolver al autenticar.
+**Base acordada; seguridad de despliegue aún incompleta.** Access solo en memoria, refresh en cookie HttpOnly emitida por backend. Login ADMIN conserva el challenge 2FA por email y admite `rememberSession`; ni 2FA ni refresh web devuelven refresh en JSON.
 
 ```ts
-export interface AuthUser {
-  id: string;
-  nombre: string;
-  apellido: string;
-  email: string;
-  legajo: string;
+interface WebLogin {
+  identifier: string;
+  password: string;
+  client: "ADMIN";
+  rememberSession: boolean;
 }
-```
-
-### Marcación / registro horario (mobile)
-
-Fuente: `mobile_app_gdes/types/api.ts`. Produce: mobile (empleado). Consumirá: backend → admin (revisión de registros).
-
-```ts
-export type RegisterAction = "entrada" | "salida" | "ausencia";
-
-export interface RegisterRequest {
-  workplaceId: string;
-  action: RegisterAction;
-  observation?: string;
-  timestamp: string;
-  // Location data
-  latitude: number;
-  longitude: number;
-  accuracy: number;
-  locationTimestamp: string;
-}
-
-export interface RegisterResponse {
-  success: boolean;
-  message: string;
-  registrationId?: string;
-}
-
-// Error types
-export interface ApiError {
-  code: string;
-  message: string;
-}
-```
-
-Nota relevada (`mobile_app_gdes/docs/05`): `observation` viaja, pero el motivo de ausencia (enfermedad/franco/otros) queda en estado local y **no** se incorpora al request.
-
-### Lugares de trabajo (mobile)
-
-Fuente: `mobile_app_gdes/types/workplace.ts`. Producirá: backend (gestionado desde admin). Consume: mobile.
-
-```ts
-export interface Workplace {
-  id: string;
-  name: string;
-  siteId: string;
-  siteName: string;
-  active: boolean;
-}
-```
-
-### Planillas (mobile)
-
-Fuente: `mobile_app_gdes/types/document.ts`. Produce: mobile (empleado). Consumirá: backend → admin (procesamiento de planillas).
-
-```ts
-export interface DocumentUploadRequest {
-  workplace: string;
-  months: string[];
-  files: string[]; // Array of file URIs
-  uploadedAt: string;
-}
-
-export interface DocumentUploadResponse {
-  success: boolean;
-  message: string;
-  documentId?: string;
-}
-```
-
-Nota relevada (`mobile_app_gdes/docs/02` y `05`): la UI envía `months: []` fijo y URIs locales de imagen; el lugar se muestra pero no es obligatorio para habilitar el envío.
-
-### Documentos de contingencia / legajo (mobile)
-
-Fuente: `mobile_app_gdes/types/document.ts`. Produce: mobile (empleado). Consumirá: backend → admin (legajo digital del empleado).
-
-```ts
-// Allowed file extensions for contingency documentation
-export const ALLOWED_EXTENSIONS = [
-  "pdf",
-  "jpg",
-  "jpeg",
-  "png",
-  "docx",
-  "doc",
-  "txt",
-] as const;
-
-// A single attached file selected by the user
-export interface SelectedFile {
-  uri: string;
-  name: string;
-  type: string; // extension, e.g. "pdf"
-  size: number; // bytes
-}
-
-export interface ContingencyUploadRequest {
-  workplaceId: string | null;
-  files: SelectedFile[];
-  uploadedAt: string;
-}
-
-export interface ContingencyUploadResponse {
-  success: boolean;
-  message: string;
-}
-```
-
-Nota relevada (`mobile_app_gdes/docs/02`): la UI envía `workplaceId: null` y no valida tamaño, duplicados ni cantidad.
-
-### Modelos y convenciones sugeridos por la spec de admin
-
-Fuente: `admin_web_app/docs/spec_definition.md` Parte 8. Son **sugerencias de la spec**, no contratos vigentes: la spec repite que "el formato final dependerá del backend".
-
-DTO de API vs modelo de dominio (sección 88):
-
-```ts
-interface UserResponseDto {
+interface AuthUser {
   id: string;
   firstName: string;
   lastName: string;
   email: string;
+  employeeId: string;
+  role: "ADMIN" | "SUPER_ADMIN";
 }
+interface WebSession {
+  user: AuthUser;
+  sessionExpiresAt: string;
+  rememberSession: boolean;
+}
+interface WebSessionResponse { data: WebSession }
+interface WebTokenResponse {
+  data: WebSession & {
+    tokens: { accessToken: string; expiresIn: number };
+  };
+}
+interface WebCsrfResponse { data: { csrfToken: string } }
 ```
 
+| Ruta | Entrada / salida diseñada |
+|---|---|
+| POST `/auth/login` | `WebLogin` → 202 challenge; recordar elección en el challenge |
+| POST `/auth/login/2fa/verify` | challenge/código del flujo admin → `WebTokenResponse` y cookie |
+| GET `/auth/web/csrf` | `WebCsrfResponse`; bootstrap sin crear sesión autenticada |
+| GET `/auth/web/session` | cookie → `WebSessionResponse`; no rota ni devuelve access |
+| POST `/auth/web/refresh` | `{}` y cookie → `WebTokenResponse`; rota refresh, exige CSRF |
+| POST `/auth/web/logout` | `{}` y cookie → 204; revoca esa sesión/cadena e invalida cookie con iguales atributos |
+
+`expiresIn=1800`; `sessionExpiresAt` es límite absoluto inicial, no se reinicia al rotar. Respuesta perdida/ambigua de refresh exige relogin; no repetir el refresh previo ni relajar detección de reuso. 401 de session/refresh limpia estado y lleva a login; OTP inválido no dispara refresh. Auth/sesión usa `Cache-Control: no-store`.
+
+Concurrencia: una promesa de refresh por pestaña y coordinación same-origin mediante Web Locks/BroadcastChannel; logout cancela requests y limpia usuario/Query/cache. Una respuesta anterior no restablece sesión cerrada. El backend debe resolver revocación/rotación transaccionalmente. La generación de sesión, fallback sin esas APIs, logout offline/recarga y otros orígenes siguen abiertos.
+
+Despliegue: proyectos Vercel separados es la preferencia vigente; dominios/orígenes no elegidos. `prolimpservicios.com` pertenece al humano; `admin.prolimpservicios.com` y `api.prolimpservicios.com` son candidatos. Usar un API `*.vercel.app` desde el dominio propio sería cross-site; dos subdominios del dominio propio serían same-site pero cross-origin. CORS requiere allowlist exacta y credenciales. Cookies cross-site requieren `SameSite=None; Secure` y siguen sujetas a bloqueo/partición del navegador; CORS no lo evita.
+
+**Pendientes por ratificar:** URLs reales, atributos/nombre/vida de cookie, emisión y rotación CSRF/preauth (incluido login CSRF), identificador de generación de sesión, comportamiento logout offline, navegadores/fallback. `__Host-gdes-refresh`, Path=/, sin Domain, cookie de sesión sin recordar y Max-Age hasta siete días al recordar son candidatos, no atributos finales aprobados. Backend propone y humano ratifica antes de integración real.
+
+Motivo: limitar persistencia de credenciales web y conservar rotación estricta sin cambiar mobile. Mocks no demuestran cookies, CSRF ni coordinación real.
+
+## Solicitud administrativa
+
+Ampliar `POST /auth/admin-access-request` sin versionar. No crear cuenta ni cambiar rol antes de verificar email. Conservar diez campos:
+
 ```ts
-interface User {
-  id: string;
-  fullName: string;
+interface AdminAccessRequest {
+  firstName: string;
+  lastName: string;
   email: string;
+  password: string;
+  phone: string;
+  dni: string;
+  employeeId: string;
+  address: string;
+  siteId: string;
+  birthDate: string;
+}
+interface AdminAccessChallenge {
+  data: {
+    challengeId: string;
+    expiresAt: string;
+    resendAvailableAt: string;
+    message: string;
+  };
+}
+interface VerifyAdminAccess {
+  challengeId: string;
+  code: string;
+}
+interface ResendAdminAccess { challengeId: string }
+interface AdminAccessSubmitted {
+  data: { status: "PENDING"; message: string };
 }
 ```
 
-Enums centralizados (sección 89, copiados tal como aparecen en la spec):
+POST inicial y `/auth/admin-access-request/resend` → 202 `AdminAccessChallenge`; `/auth/admin-access-request/verify` con `VerifyAdminAccess` → `AdminAccessSubmitted`. Resend usa `ResendAdminAccess` y devuelve challenge completo para reemplazar el activo. Respuestas neutrales antes de verificar: sin existencia, perfil o rol; `birthDate` civil, `siteId` UUID y `employeeId` legajo string.
+
+- Código de seis dígitos: TTL 10 min, máximo cinco intentos, cooldown 60 s; payload pendiente se elimina a las 72 h. Contraseñas nunca en texto persistido/logs; nueva contraseña hasheada en backend.
+- Cuenta nueva: tras verificar, crear perfil completo TO_BE_ADMIN y solicitud PENDING transaccionalmente. Existente EMPLOYEE ACTIVE: exigir contraseña actual más OTP, preservar perfil/password; discrepancias no identitarias se advierten después de verificar y se continúa sin sobrescribir.
+- Conflicto de email/DNI/legajo con otra cuenta: `409 ADMIN_REQUEST_IDENTITY_CONFLICT`; INACTIVE no se reactiva; ADMIN/SUPER_ADMIN no se degrada. No revelar elegibilidad antes de prueba de identidad; `403 ADMIN_REQUEST_NOT_ELIGIBLE` según catálogo backend por materializar.
+- TO_BE_ADMIN con solicitud pendiente: no duplicar solicitud/correos. Revalidar identidad y estado en transacción. El cambio de rol bloquea también mobile y requiere control de rol actual/revocación, sin esperar un JWT antiguo.
+- Después de verificar se envían correos de recepción y decisión. Link de decisión de un solo uso, TTL siete días: GET muestra UI, POST confirma aprobación/rechazo. Aprobar → ADMIN; rechazar → EMPLOYEE; INACTIVE mientras se espera → solicitud cancelada. No borrar cuenta.
+
+Pendiente de detalle backend: reenvío sin extender indefinidamente retención, idempotencia ante respuesta perdida, catálogo completo de errores y UX de limpieza del token de URL. No asumir una estrategia técnica por estar propuesta.
+
+Motivo: impedir cambios de rol por conocer un email y evitar decisiones involuntarias de scanners de correo.
+
+## Empleados
+
+Contrato de diseño aprobado para Admin y sus mocks; backend pendiente. ADMIN/SUPER_ADMIN pueden leer/escribir, sin DELETE, gestión de roles o reset de password por este recurso.
 
 ```ts
-enum UserRole {
-  EMPLOYEE,
-  ADMIN,
-  SUPER_ADMIN
+type AccountStatus = "ACTIVE" | "INACTIVE";
+
+interface SiteReference {
+  id: string;
+  name: string;
 }
 
-enum RecordStatus {
-  COMPLETE,
-  INCOMPLETE
+interface UserListItem {
+  id: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+  dni: string;
+  email: string;
+  phone: string;
+  site: SiteReference;
+  accountStatus: AccountStatus;
 }
 
-enum ReviewStatus {
-  NONE,
-  PENDING,
-  APPROVED,
-  REJECTED, // enum histórico de la spec: retirado por decisión 13
-  MANUAL_LOADED
+interface UserDetail extends UserListItem {
+  address: string;
+  birthDate: string;
+  cuil: string | null;
+  hireDate: string | null;
+  position: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateUserInput {
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+  dni: string;
+  email: string;
+  initialPassword: string;
+  phone: string;
+  address: string;
+  siteId: string;
+  birthDate: string;
+}
+
+interface UpdateUserInput {
+  firstName?: string;
+  lastName?: string;
+  employeeId?: string;
+  dni?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  siteId?: string;
+  birthDate?: string;
+  cuil?: string | null;
+  hireDate?: string | null;
+  position?: string | null;
+}
+```
+```ts
+interface UserListQuery {
+  search?: string;
+  accountStatus?: AccountStatus;
+  page?: number;
+  pageSize?: number;
 }
 ```
 
-La spec indica que también deben existir: `IntervalStatus`, `IntervalType`, `AccountStatus`, `TimesheetStatus`, `DocumentType`, `RecordOrigin`, `Site` (sin definición en la fuente — pendiente).
+| Ruta | Request → response |
+|---|---|
+| GET `/users` | `UserListQuery` → `{ data: UserListItem[], pagination }` |
+| GET `/users/{id}` | `{ data: UserDetail }` |
+| POST `/users` | `CreateUserInput` → 201 `{ data: UserDetail }` |
+| PATCH `/users/{id}` | `UpdateUserInput` → `{ data: UserDetail }` |
+| PATCH `/users/{id}/account-status` | `{ accountStatus }` → `{ data: UserDetail }`; idempotente |
+| GET `/sites` | `{ data: SiteReference[] }`; seis provincias habilitadas, por nombre, sin CRUD |
 
-Convenciones REST sugeridas (secciones 81-86):
+Listado: page=1, pageSize=25/máximo 100; search parcial case-insensitive sobre nombre/apellido/email/legajo/DNI; orden `lastName,firstName,id ASC`. Alta ACTIVE sin verificación de email ni cambio obligatorio de contraseña. PATCH omitido conserva; null solo limpia `cuil/hireDate/position`. Perfil opcional puede seguir nulo; importación inicial no definida. Desactivar exige confirmación.
 
-- Recursos: `/users`, `/records`, `/clients`, `/sites`, `/workplaces`, `/timesheets`, `/documents`, `/auth`.
-- Paginación server-side: `?page=1&pageSize=25`, respuesta `{ items, pagination: { page, pageSize, totalItems, totalPages } }`.
-- Filtros explícitos en la URL (ej. `GET /records?month=5&year=2026&siteId=123&employeeId=456&status=INCOMPLETE`); ordenamiento `?sortBy=lastName&order=asc`.
-- El módulo de registros usa infinite scroll: paginación interna con `useInfiniteQuery()`, sin paginación visual.
-- Respuesta exitosa sugerida: `{ "data": {...} }`; listados: `{ "data": [], "pagination": {} }`.
-- Error uniforme sugerido: `{ "error": { "code": "USER_ALREADY_EXISTS", "message": "El usuario ya existe", "retryable": false } }`. El frontend no debe depender únicamente de `retryable`.
+Validaciones: nombres trim 1–100; legajo trim 1–50; DNI 7–8 dígitos; teléfono 10–13 dígitos; email trim/lowercase válido <=254; domicilio trim 1–200; siteId existente; nacimiento/ingreso fechas reales no futuras; CUIL null u 11 dígitos; puesto null o trim 1–100. Password inicial 12–128 caracteres, permite espacios/Unicode, sin composición obligatoria; backend rechaza comunes/comprometidas. Política compartida pendiente de implementación mobile/backend.
 
-## Divergencias resueltas
+Errores no reintentables: `404 USER_NOT_FOUND`; `409 USER_EMAIL_ALREADY_EXISTS|USER_DNI_ALREADY_EXISTS|USER_EMPLOYEE_ID_ALREADY_EXISTS`; `400 INVALID_USER_DATA|INVALID_SITE|WEAK_PASSWORD`. DTO de recurso no expone rol ni credenciales; links usan UUID, no legajo/DNI.
 
-Las 6 divergencias detectadas entre mobile y la spec de admin fueron resueltas por el humano el 2026-09-15 — ver "Decisiones de integración" arriba. Este registro histórico se mantiene solo como contexto.
+Motivo: gestión de identidad completa sin mezclar permisos ni credenciales con edición de perfil.
 
-## Pendiente de definir con el humano
+## Clientes y lugares
 
-Las decisiones de producto P-01, P-03 a P-07 y la política principal de F-006 están ratificadas. Los pendientes listados abajo son únicamente los puntos donde falta una definición humana o una propuesta técnica del backend; no deben convertirse en supuestos de integración.
+Diseño aprobado ADMIN, distinto de la futura lista agrupada EMPLOYEE/mobile. Estado ACTIVE/INACTIVE, geometría CIRCLE; relaciones resueltas en respuestas para evitar N+1.
 
-- **P-02 / autenticación web:** falta que backend proponga un identificador de generación de sesión y un mecanismo CSRF exacto para que el humano los ratifique. Los orígenes concretos, atributos de cookie y pruebas de navegador se cierran cuando exista el despliegue web/API elegido.
-- **Datos de perfil opcionales:** P-06 permite que Admin actualice `cuil`, `hireDate` y `position`; el alta no los incluye y `UserDetail` los devuelve nullable. La carga inicial/importación de valores históricos no está especificada y puede permanecer nula hasta su actualización por Admin.
+```ts
+type EntityStatus = "ACTIVE" | "INACTIVE";
+type WorkplaceShapeType = "CIRCLE";
 
-Pendientes de integración (no son decisiones abiertas de producto):
+// SiteReference se define en Empleados.
+interface ClientReference {
+  id: string;
+  name: string;
+  status: EntityStatus;
+}
 
-- **P-02 / despliegue**: el humano prefiere mantener web y backend en proyectos Vercel separados, pero difiere la elección de dominios/orígenes finales hasta más adelante y sujeta auth a pruebas. Es propietario de `prolimpservicios.com`; `admin.prolimpservicios.com` es un candidato, no una decisión. Si Admin usa ese host pero API queda en `backend-gdes.vercel.app`, seguirá siendo cross-site. Si se mapea el proyecto backend a `api.prolimpservicios.com`, Admin y API serían same-site pero seguirían siendo cross-origin y necesitarían CORS. Vercel permite asignar dominios/subdominios propios a proyectos y requiere configurar/verificar DNS. Los dominios tentativos del backend son `https://backend-api-gdes-prod.vercel.app` y `https://backend-api-gdes-dev.vercel.app`; confirmar al desplegar. `vercel.app` figura en la Public Suffix List: subdominios distintos son sitios distintos, así que la cookie de API usada desde Admin es cross-site. `SameSite=None; Secure` es necesario para el envío cross-site, pero no evita que el navegador o sus ajustes/extensiones bloqueen o particionen cookies de terceros. CORS debe permitir solo orígenes exactos y credenciales; CORS no anula las políticas de cookies. Esto puede romper restauración/refresh de sesión en ciertos navegadores. Antes de cerrar P-02 hay que verificar los navegadores objetivo y documentar fallback. Alternativas a revisar si falla: dominios propios same-site para Admin/API, o proxy/BFF same-origin. Faltan URLs reales, atributos de cookie, identificador de generación de sesión y mecanismo CSRF exacto; backend propone generación/CSRF y el humano ratifica.
-- **Backend**: materializar en docs y API las decisiones 8–16; publicar DTOs, catálogo de errores y ejemplos verificables. Particularmente P-01 mensual, P-02 web auth, P-03 solicitud admin, P-04 reglas, P-06/P-07 entidades y F-006 aprobación/detalle.
-- **Estado de sincronización de propuestas al 2026-10-12**: P-01/P-03/P-04/P-05 y P-06/P-07 tienen decisión ratificada; P-02 está parcialmente ratificada y la preferencia humana es mantener proyectos Vercel separados, con dominios/orígenes aún por elegir y auth sujeta a pruebas; la ventana offline de 24 h quedó ratificada el 2026-10-12; F-006 aprobación/eliminación está ratificada y su propuesta de detalle está aprobada para mocks con DTO backend pendiente. Los archivos de admin `20260918-google-maps-synced-contract.md`, `20260919-f006-aprobacion-y-eliminacion-intervalos.md` y `20260919-f006-detalle-registro-eventos.md` requerían esta consolidación. No hay propuestas de cambio nuevas en los otros dos subrepos.
+interface ClientListItem extends ClientReference {
+  createdAt: string;
+  updatedAt: string;
+}
+
+type ClientDetail = ClientListItem;
+
+interface CreateClientInput {
+  name: string;
+}
+
+interface UpdateClientInput {
+  name: string;
+}
+
+interface WorkplaceListItem {
+  id: string;
+  name: string;
+  client: ClientReference;
+  site: SiteReference;
+  status: EntityStatus;
+  shapeType: WorkplaceShapeType;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  gpsAccuracyThreshold: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+type WorkplaceDetail = WorkplaceListItem;
+
+interface CreateWorkplaceInput {
+  clientId: string;
+  siteId: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  gpsAccuracyThreshold: number | null;
+}
+
+interface UpdateWorkplaceInput {
+  clientId: string;
+  siteId: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMeters: number;
+  gpsAccuracyThreshold: number | null;
+}
+```
+
+```ts
+interface ClientListQuery {
+  search?: string;
+  status?: EntityStatus;
+  page?: number;
+  pageSize?: number;
+}
+```
+
+```ts
+interface WorkplaceListQuery {
+  search?: string;
+  clientId?: string;
+  siteId?: string;
+  status?: EntityStatus;
+  page?: number;
+  pageSize?: number;
+}
+```
+
+| Recurso | Rutas y formas |
+|---|---|
+| clients | GET `/clients` con `ClientListQuery` → lista paginada; GET `/{id}` → detalle; POST con `CreateClientInput` → 201 detalle; PUT `/{id}` con `UpdateClientInput` → detalle; PATCH `/{id}/status` con `{ status }` → detalle |
+| workplaces | GET `/workplaces` con `WorkplaceListQuery` → lista paginada; GET `/{id}` → detalle; POST con `CreateWorkplaceInput` → 201 detalle; PUT `/{id}` con `UpdateWorkplaceInput` → detalle; PATCH `/{id}/status` con `{ status }` → detalle |
+
+Todas las respuestas usan `{ data }`, listas con pagination; page=1, pageSize=25/máximo 100. Búsqueda parcial case-insensitive sin exigir acentos en name; filtros AND, UUID exactos; orden `name,id ASC`. PUT reemplaza campos editables completos. Estado idempotente y separado, sin DELETE ni cascada; cliente puede no tener lugares. Cliente INACTIVE impide crear/reasignar y seleccionar sus lugares para operaciones nuevas aunque estos conserven ACTIVE. Mantener lectura y correcciones históricas; no reescribir relaciones históricas materializadas al mover un lugar.
+
+Validaciones: nombres trim 1–120; cliente único global normalizando mayúsculas/espacios, lugar único por cliente/provincia/nombre normalizado. IDs existentes; latitud finita [-90,90], longitud [-180,180], radio entero [10,10000] m, umbral null o entero [1,1000] m. Centro elegido conscientemente, no un default arbitrario.
+
+Errores no reintentables: `404 CLIENT_NOT_FOUND|WORKPLACE_NOT_FOUND`; `409 CLIENT_NAME_ALREADY_EXISTS|WORKPLACE_NAME_ALREADY_EXISTS|CLIENT_INACTIVE`; `400 INVALID_CLIENT_DATA|INVALID_WORKPLACE_DATA|INVALID_SITE|INVALID_GEO_CONFIGURATION`.
+
+Mapa Admin: Google Maps JavaScript API + Places API (New), `PlaceAutocompleteElement` restringido a Argentina. Autocomplete solo centra; clic, arrastre o coordenadas confirman ubicación. Persistir únicamente lat/lon/radio/umbral, sin dirección, Place ID o resultados de geocoder. Marker/Circle e inputs sincronizados; atribución visible; clave pública `VITE_GOOGLE_MAPS_API_KEY` restringida por HTTP referrer/API. Sin proxy ni fallback OSM público. Error de proveedor no borra selección. Facturación se verifica al configurar, sin conservar estimaciones históricas como regla.
+
+Motivo: editar configuración geográfica verificable sin convertir resultados del proveedor en datos de dominio.
+
+## Asistencia
+
+### Eventos y proyección
+
+Mobile emite eventos atómicos CHECK_IN/CHECK_OUT/ABSENCE; backend persiste AttendanceEvent append-only y proyecta un registro por `(userId,workplaceId,date GMT-3)`. La marcación diseñada responde `{ data: { eventId, recordId, message } }`; errores usan envelope común. Tipos locales `RegisterRequest/RegisterResponse` de mobile todavía deben migrar; el código local no es contrato de red definitivo. Campos y pipeline internos: `backend_api_gdes/docs/05-asistencia-eventos-y-registros.md`.
+
+| Intervalo | Estado | Trabajo cerrado | Completitud si único |
+|---|---|---|---|
+| WORK, inicio y fin | CLOSED | diferencia en minutos | COMPLETE |
+| WORK, solo inicio / solo fin | OPEN / SEMI_CLOSED | 0 | INCOMPLETE |
+| ABSENCE, sin extremos o ambos | CLOSED | 0 | COMPLETE |
+| ABSENCE, solo inicio / solo fin | OPEN / SEMI_CLOSED | 0 | INCOMPLETE |
+
+Total = suma de WORK CLOSED, sin horas de ausencia. Entrada agrega intervalo; salida cierra el último abierto del mismo día/lugar. Entradas 09:00/11:00 y salidas 12:00/18:00 producen 600 minutos, incluidos solapamientos históricos. Cruce de medianoche no se cierra/fusiona: dos registros OPEN/SEMI_CLOSED, ambos incompletos y cero trabajo cerrado. Motivo de ausencia opcional siempre; null se muestra “sin motivo”.
+
+Ventana offline acordada inclusiva: `receivedAt` asignado por servidor menos `occurredAt <= 24 h`. Más antiguo devuelve `422 ATTENDANCE_EVENT_TOO_OLD`, `retryable=false` (diseño técnico documentado en catálogo backend, todavía sin implementación). Pendientes timestamps futuros/clock skew y pruebas de frontera; no usar recepción enviada por cliente. La cola offline mobile existe pero la UI aún la mantiene inactiva.
+
+Motivo: preservar evidencia original y evitar completar jornadas o razones por inferencia.
+
+### Consulta mensual
+
+GET `/records/monthly`, ADMIN/SUPER_ADMIN, pagina filas completas empleado–lugar con actividad (ausencia cuenta), sin asignaciones permanentes ni filas sintéticas. Cada fila tiene todos los 28–31 días ordenados. EMPTY es ausencia confirmada en snapshot; PRESENT conserva ID incluso cuando no coincide; LOADING/ERROR son estados UI.
+
+```ts
+type RecordStatus = "COMPLETE" | "INCOMPLETE";
+type ReviewStatus = "NONE" | "PENDING" | "APPROVED" | "MANUAL_LOADED";
+interface MonthlyQuery {
+  month: number;
+  year: number;
+  page?: number;
+  pageSize?: number;
+  siteId?: string;
+  employeeId?: string;
+  workplaceId?: string;
+  clientId?: string;
+  status?: RecordStatus;
+  reviewStatus?: ReviewStatus;
+  origin?: "AUTOMATIC" | "MANUAL";
+  hasAbsence?: true;
+  snapshotToken?: string;
+}
+type Day =
+  | { date: string; state: "EMPTY" }
+  | {
+      date: string;
+      state: "PRESENT";
+      matchesFilters: boolean;
+      record: {
+        id: string;
+        totalWorkMinutes: number;
+        recordStatus: RecordStatus;
+        reviewStatus: ReviewStatus;
+        origin: "AUTOMATIC" | "MANUAL";
+        hasAbsence: boolean;
+        intervalCount: number;
+      };
+    };
+interface MonthlyRow {
+  employee: { id: string; firstName: string; lastName: string; employeeId: string };
+  workplace: { id: string; name: string };
+  client: { id: string; name: string };
+  site: { id: string; name: string };
+  days: Day[];
+  totals: { monthWorkMinutes: number; matchingWorkMinutes: number };
+}
+interface MonthlyResponse {
+  data: MonthlyRow[];
+  pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
+  meta: {
+    month: number;
+    year: number;
+    timeZone: "-03:00";
+    snapshotToken: string;
+    snapshotExpiresAt: string;
+    totals: { monthWorkMinutes: number; matchingWorkMinutes: number };
+  };
+}
+```
+
+Mes/año obligatorios; page=1, pageSize=50/máximo 100; `siteId` provincia del lugar. Estado/revisión/origen/ausencia deben coincidir sobre **el mismo registro diario** para seleccionar fila; devolver todos sus días con `matchesFilters` por registro. Totales mensuales y coincidentes de fila/globales abarcan todas las filas seleccionadas, no solo página. Orden fijo apellido/nombre/lugar/UUID empleado/UUID lugar; collation backend pendiente.
+
+Snapshot opaco ligado a usuario/filtros/orden, TTL 15 min: primera página crea, siguientes envían token. Mutación/actualización reinicia desde página 1 sin mezclar snapshots. `410 MONTHLY_SNAPSHOT_EXPIRED`, `400 MONTHLY_SNAPSHOT_MISMATCH`, ambos no reintentables. Snapshot no autoriza escrituras: POST revalida unicidad/permisos actuales; `409 RECORD_ALREADY_EXISTS` requiere recuperar registro sin sobrescribir.
+
+Motivo: evitar filas partidas y fechas falsamente vacías por paginación o concurrencia. Backend debe probar febrero bisiesto, 31 días, cero filas, filas mixtas, dos páginas y escritura concurrente.
+
+### Corrección y aprobación
+
+`ReviewStatus = NONE | PENDING | APPROVED | MANUAL_LOADED`; `IntervalReviewStatus = NONE | PENDING | APPROVED`. No existe REJECTED para asistencia (sí puede existir para solicitudes administrativas).
+
+```ts
+type IntervalInput = {
+  type: "WORK" | "ABSENCE";
+  startTime: string | null;
+  endTime: string | null;
+  absenceReason: "ILLNESS" | "VACATION" | "LEAVE" | "ART" | "OTHER" | null;
+  observations: string | null;
+};
+interface CreateRecord {
+  userId: string;
+  workplaceId: string;
+  date: string;
+  observations: string | null;
+  intervals: IntervalInput[];
+}
+type IntervalChange =
+  | { operation: "ADD"; interval: IntervalInput }
+  | { operation: "UPDATE"; id: string; interval: IntervalInput }
+  | { operation: "DELETE"; id: string };
+interface UpdateRecord {
+  expectedVersion: number;
+  observations?: string | null;
+  intervalChanges?: IntervalChange[];
+}
+interface ReviewRecord {
+  expectedVersion: number;
+  reviewStatus: "APPROVED";
+}
+```
+
+POST `/records` crea con `CreateRecord` → 201 `{ data: RecordDetail }`; PATCH `/records/{id}` con `UpdateRecord` corrige → `{ data: RecordDetail }`. Identidad user/lugar/fecha inmutable. Omitido conserva; null limpia solo nullable; intervalos no mencionados se conservan. UPDATE/DELETE deben pertenecer al registro y quedar al menos uno (`422 RECORD_INTERVALS_REQUIRED`). Manual no admite WORK sin ambos extremos, registro vacío ni nuevos solapamientos; no invalida históricos proyectados. Campos derivados los calcula backend.
+
+Toda corrección usa `expectedVersion`; incrementa versión y recalcula proyección MANUAL/MANUAL_LOADED, intervalos editados MANUAL, sin crear/editar/borrar AttendanceEvent. PATCH `/records/{id}/review` con `ReviewRecord` aprueba e incrementa versión conservando origen, datos, horarios e intervalos exactamente; devuelve detalle. No hay ruta aprobada de revisión individual de intervalos. Conflicto: `409 RECORD_VERSION_CONFLICT`, no reintentable; conservar formulario y ofrecer recargar/comparar.
+
+Motivo: separar validación administrativa de corrección y evitar pérdida silenciosa de cambios/evidencia.
+
+### Detalle y metadata bajo demanda
+
+GET `/records/{id}` incluye relaciones/intervalos y referencias livianas a eventos; GET `/attendance-events/{id}` carga metadata al pedir más detalles. Intervalos manuales no sintetizan eventos. **Los DTOs siguientes están aprobados para mocks; publicación final backend pendiente.**
+
+```ts
+interface RecordDetail {
+  id: string;
+  date: string;
+  employee: { id: string; firstName: string; lastName: string; employeeId: string };
+  workplace: { id: string; name: string };
+  client: { id: string; name: string };
+  site: { id: string; name: string };
+  totalWorkMinutes: number;
+  recordStatus: "COMPLETE" | "INCOMPLETE";
+  reviewStatus: "NONE" | "PENDING" | "APPROVED" | "MANUAL_LOADED";
+  origin: "AUTOMATIC" | "MANUAL";
+  hasAbsence: boolean;
+  observations: string | null;
+  version: number;
+  intervals: RecordInterval[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RecordInterval {
+  id: string;
+  type: "WORK" | "ABSENCE";
+  status: "OPEN" | "SEMI_CLOSED" | "CLOSED";
+  startTime: string | null;
+  endTime: string | null;
+  absenceReason: "ILLNESS" | "VACATION" | "LEAVE" | "ART" | "OTHER" | null;
+  observations: string | null;
+  origin: "AUTOMATIC" | "MANUAL";
+  reviewStatus: RecordDetail["reviewStatus"];
+  attendanceEvents: Array<{
+    id: string;
+    type: "CHECK_IN" | "CHECK_OUT" | "ABSENCE";
+    occurredAt: string;
+  }>;
+}
+
+interface AttendanceEventDetail {
+  id: string;
+  recordId: string;
+  intervalId: string;
+  type: "CHECK_IN" | "CHECK_OUT" | "ABSENCE";
+  occurredAt: string;
+  receivedAt: string;
+  origin: "MOBILE" | "ADMIN";
+  observation: string | null;
+  location: {
+    latitude: number;
+    longitude: number;
+    accuracyMeters: number;
+    capturedAt: string;
+  } | null;
+  metadata: Record<string, string | number | boolean | null>;
+}
+```
+
+La forma mock usa `RecordDetail["reviewStatus"]` también en intervalos; es una brecha frente al enum IntervalReviewStatus acordado, no permiso para introducir MANUAL_LOADED en intervalos del contrato final. Metadata escalar de solo lectura; distinguir null/desconocido. Confirmar con backend nombres finales, nullabilidad para históricos, vínculos de eventos tras borrar intervalos y usos de origin ADMIN (las correcciones no generan eventos).
+
+UI: detalle por doble clic o Enter/Espacio, `recordId` en query, diálogo accesible con Escape; carga/error/reintento independientes por detalle/evento. No consultar eventos por celda durante render.
+
+## Archivos y métricas
+
+Acuerdos vigentes, todavía sin backend de dominio:
+
+- Planillas requieren `workplaceId`; contingencia admite `workplaceId: null`. Mobile aún usa `DocumentUploadRequest.workplace`, months vacío y URIs locales: no es subida HTTP real.
+- 20 MiB (20 × 1024 × 1024 bytes) por archivo, máximo 10 por request; pdf/jpg/jpeg/png/doc/docx/txt, validar contenido en backend además de extensión. Lote atómico con rollback DB/bucket. No inferir que proxy/hosting acepta hasta 200 MiB sin probar transporte.
+- Búsqueda por fileName y nombre/apellido/legajo del empleado. Descarga vigente `{ data: { downloadUrl } }` con firma 15 min; pedir firma nueva al reintentar, no persistir URLs vencidas. Añadir `expiresAt` obligatorio es propuesta abierta.
+- Borrar documento sí, planilla no. Reemplazo no borra original hasta confirmar archivo nuevo válido. Edición de documento: nombre visible/tipo. Sin OCR, registros generados ni vínculo automático con ausencias.
+- Métricas del mes seleccionado: `pendingTimesheets`, `incompleteRecords`, `pendingReviewRecords`, `recordsWithAbsence`; esta última cuenta registros con >=1 ABSENCE, no intervalos/horas. Enlaces conservan período/filtro. Alcance provincial pendiente.
+
+Motivo: coherencia de archivos y contadores sin atribuir transporte real ni decisiones nuevas a mocks.
+
+DTOs completos de planillas/documentos/metrics, `expiresAt`, preservación de estado al reemplazar, auditoría/concurrencia, multipart, filtros y scope provincial son **propuesta pendiente**, en `admin_web_app/docs/changes_proposals/20260919-f007-f009-planillas-legajos-metricas.md`. Sus modelos implementados están en `admin_web_app/src/types/{timesheets,documents,dashboard}.ts`; el mock actual de métricas exige además `byProvince`, todavía sin ratificación contractual. No duplicarlos como contratos aprobados.
+
+## Pendientes de decisión e integración
+
+- Auth mobile: TTL del magic link de email (24 h en diseño backend) requiere confirmación; no confundir con ventana offline ratificada. Catálogo de ausencia debe aclarar equivalencia de “franco” en UI mobile, sin inventar mapping a VACATION/LEAVE.
+- Sesión web: cerrar los puntos de seguridad/despliegue en su sección antes de F-010; un adaptador HTTP y un mock no prueban autenticación.
+- Archivos/métricas: resolver la propuesta abierta; contador global actual y matriz UI por provincia predeterminada no garantizan el mismo conjunto.
+- Asistencia: precisión segundos/milisegundos, límites de día, igualdad inicio=fin, fechas futuras, máximo de intervalos/observaciones, clock skew, eventos offline desordenados y vínculos históricos requieren definición técnica/validación. No ratificar límites elegidos solo en mock.
+- Catálogos: exposición pública/privada, etiquetas y reenvío 2FA ADMIN deben publicarse con permisos/códigos concretos. No inferir compatibilidad con resend mobile.
+- Admin HTTP: `src/services/http-service-adapter.ts` descarta el prefijo de base al resolver paths absolutos, no agrega Authorization/CSRF y serializa JSON, no FormData; completar antes de integración. Registro solo valida localmente y auth no implementa todavía renovación/concurrencia completas.
+- Backend: implementar dominio, migrar enums y materializar ejemplos/errores/pruebas; mobile: migrar modelos/envelopes y habilitar flujos acordados; Admin: alinear adaptadores y resolver brechas antes de integración real. Estos pendientes son ejecución, no motivo para conservar propuestas resueltas.

@@ -14,15 +14,15 @@
 
 1. Toma la feature `pending` de `feature_list.json`.
 2. Crea el task spec `docs/tasks/NNN-slug.md` desde `docs/tasks/TEMPLATE.md`. Si para escribirlo necesita entender código, despacha `explore` o lee directamente — pero el spec lo escribe él.
-3. Si el spec revela un vacío o contradicción en las docs → FRENA y consulta al humano (registrar la pregunta en `progress/leader/current.md`).
+3. Si hay un vacío o contradicción documental, contrasta código y decisiones vigentes según `convenciones-globales.md`; corrige la descripción real o registra la brecha. Consulta al humano únicamente lo que siga sin resolver.
 4. Marca la feature `in_progress` en `feature_list.json`.
 5. Despacha UN implementer con un prompt que incluye: path del task spec, paths de docs relevantes, recordatorio de leer sus skills y de documentar en `progress/implementer/current.md`.
 
 ### 2. Implementer — ejecución
 
 1. Lee el task spec completo, las docs referenciadas y sus skills (`.agents/skills/`).
-2. Si el spec es ambiguo o contradice las docs → NO improvisa: lo registra en `progress/implementer/current.md` bajo "Blockers / Preguntas" y devuelve `blocked` al leader.
-3. Implementa. Mientras trabaja, appendea progreso en `progress/implementer/current.md`.
+2. Si el spec sigue ambiguo tras revisar código y decisiones vigentes, registra la pregunta en `progress/implementer/current.md` y devuelve `blocked` al leader; no inventa requisitos.
+3. Implementa. Mientras trabaja, actualiza el estado actual en `progress/implementer/current.md`.
 4. Al terminar: completa "Resultado final" en su `current.md` (archivos tocados, decisiones, cómo verificar) y la sección "Registro de implementación" del task spec. Devuelve al leader SOLO: `{ task_spec, progress_file, status }`.
 
 ### 3. Leader — revisión
@@ -44,8 +44,8 @@ Devuelve al leader SOLO: `{ task_spec, veredicto, n_items, progress_file }`.
 
 ### 5. Cierre o corrección
 
-- **Cambios requeridos** → el leader re-despacha al implementer con el feedback (nueva ronda; el reviewer registra cada ronda en el task spec).
-- **Aprobado** → el leader: marca `done` en `feature_list.json`, archiva `current.md` → `history.md` en los roles involucrados, y verifica que las docs quedaron actualizadas. Si la decisión nueva afecta un archivo común (SYNCED), NO lo edita: deja la propuesta en `docs/changes_proposals/`.
+- **Cambios requeridos** → el leader re-despacha al implementer con el feedback (nueva ronda; el reviewer reemplaza el veredicto vigente y conserva solo los ítems sin resolver).
+- **Aprobado** → el leader: marca `done` en `feature_list.json`, consolida decisión vigente y motivo breve en el documento canónico y limpia `current.md`. Retira task spec, plan, inbox y reportes resueltos después de actualizar referencias. Si hay cambio común, deja propuesta temporal y conserva ese pendiente hasta verificar su incorporación y sync; no archiva historiales.
 
 ## Plantillas de prompt para despachar
 
@@ -56,7 +56,7 @@ Implementa la tarea definida en docs/tasks/NNN-slug.md.
 Docs relevantes: <lista de paths>.
 Antes de escribir código: lee tus skills en .agents/skills/ y las docs del repo.
 Documenta tu progreso en progress/implementer/current.md MIENTRAS trabajas.
-Si el spec es ambiguo o contradice las docs, NO inventes: devolvé status "blocked" con la pregunta.
+Contrastá ambigüedades con código y decisiones vigentes; si aún falta una definición, devolvé status "blocked" con la pregunta.
 Al terminar devolvé SOLO: task_spec, progress_file, status (done|blocked).
 ```
 
@@ -77,3 +77,5 @@ Devolvé SOLO: task_spec, veredicto (aprobado|cambios requeridos), n_items, prog
 - Preguntas conceptuales o de exploración (lectura pura): el leader responde directo, sin subagentes.
 - Nada de mutaciones git sin confirmación del humano.
 - Los archivos marcados `SYNCED-FROM-TEMPLATE` son de solo lectura en este repo: los cambios se proponen en `docs/changes_proposals/` y los aplica/propaga el orchestrator de GdesProject.
+
+La política de documentación y retención es `convenciones-globales.md`: una definición por tema, racional breve y estado reemplazable; propuestas resueltas se eliminan según `docs/changes_proposals/README.md`.

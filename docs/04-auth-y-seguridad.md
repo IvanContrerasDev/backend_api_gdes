@@ -1,5 +1,7 @@
 # 04 — Autenticación y seguridad
 
+**Estado:** diseño aprobado pendiente; no existen endpoints auth ni validación JWT funcional. Detalle HTTP vigente en 03; acuerdos comunes en arquitectura/contratos-api.md.
+
 ## Tokens
 
 - **Access token**: JWT, 30 minutos. Claims: `sub` (userId), `role`, `type: "access"`.
@@ -12,7 +14,7 @@
 ## Contraseñas
 
 - Hash con **Argon2**.
-- Política igual a la que mobile ya valida en cliente (`utils/validations.ts`): reutilizar esas reglas en el servidor (mínimo de longitud, mayúscula, minúscula, número y símbolo — trasladar la regla exacta desde el código mobile al implementar).
+- Política aprobada P-06 compartida: 12–128 caracteres, admite espacios y Unicode, sin reglas obligatorias de mayúsculas/símbolos; backend rechaza comunes/comprometidas. La validación actual de mobile difiere y deberá migrar, sin trasladarla como contrato vigente.
 - Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email — `emailVerifiedAt` se setea en el alta (spec §11.1).
 - La contraseña nunca se puede revisualizar (§11.1).
 
@@ -27,7 +29,7 @@
 
 ### 2. Login admin (web) — password + 2FA por email
 1. `POST /auth/login` con `client=ADMIN`. Roles `ADMIN`/`SUPER_ADMIN` → 202 con `challengeId` y envío de código de 6 dígitos por email.
-2. `POST /auth/login/2fa/verify` con `challengeId` + `code` → tokens.
+2. `POST /auth/login/2fa/verify` con `challengeId` + `code` → access en JSON y refresh en cookie HttpOnly; sin refresh JSON web. Bootstrap/refresh/logout usan /auth/web/* (03).
 3. Código: 10 min de validez, máx. 5 intentos, un solo uso.
 4. `TO_BE_ADMIN` → 403 `ADMIN_ACCESS_PENDING` con el mensaje exacto de spec §10.3.
 
@@ -51,13 +53,17 @@
 3. `POST /auth/password-reset` con token + nueva contraseña (misma política).
 4. Al resetear se revocan todos los refresh tokens del usuario.
 
-### 6. Alta de administradores (spec §10)
-1. `POST /auth/admin-access-request` con email:
-   - Si el usuario existe → pasa a rol `TO_BE_ADMIN`.
-   - Si no existe → se crea con rol `TO_BE_ADMIN` y datos mínimos (el alta completa la hace un admin luego).
-2. Emails: confirmación al solicitante + solicitud al SuperAdmin con **links firmados aprobar/rechazar** (token de un solo uso, 72 h).
-3. Aprobación → rol `ADMIN` + email de aviso. Rechazo → rol `EMPLOYEE` + email de aviso.
-4. Gestión de cuentas admin por SuperAdmin: fuera del MVP (spec §5).
+### 6. Alta de administradores
+
+Flujo completo y DTOs en 03 (Solicitud admin): diez campos, challenge email antes de crear cuenta/cambiar rol, contraseña actual para existentes y perfil conservado. OTP 10 min/5 intentos/cooldown 60 s, payload temporal 72 h. Tras verificar se crea solicitud PENDING y se envían correos; decisión de un solo uso 7 días, GET solo muestra UI y POST confirma. Cuenta que pasa a INACTIVE cancela solicitud. No fusionar identidades ni degradar administradores.
+
+### Seguridad web pendiente de ratificación
+
+Transporte ya aprobado: refresh HttpOnly, access memoria, rememberSession, sessionExpiresAt absoluto máximo 7 días, relogin ante refresh perdido/ambiguo. Orígenes, atributos definitivos de cookie, generación de sesión, CSRF exacto y fallback de navegador están pendientes: ver 03 y contrato común. Dos proyectos Vercel no garantizan cookies cross-site; validar navegadores reales en F-010. No proponer campos como si ya estuvieran aprobados.
+
+### Parámetro por confirmar
+
+TTL de 24 h para magic link de verificación mobile figura en el diseño original, pero leader lo dejó pendiente de confirmación humana; no confundirlo con el límite offline ratificado de 24 h ni con decisión admin de 7 días.
 
 ## Autorización
 

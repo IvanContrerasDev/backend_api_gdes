@@ -1,5 +1,7 @@
 # 06 — Integraciones externas
 
+**Estado:** diseño aprobado pendiente; no hay providers ni SDKs de integraciones implementados.
+
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 
 ## 1. Resend (email) — `EmailProvider`
@@ -12,8 +14,8 @@ Emails del sistema (spec §9.2/§9.3/§10.2):
 |---|---|---|---|
 | 1 | Código 2FA | Login admin (cada login) | Admin |
 | 2 | Recuperación de contraseña | `POST /auth/password-recovery` | Empleado o admin |
-| 3 | Confirmación de solicitud recibida | `POST /auth/admin-access-request` | Solicitante |
-| 4 | Solicitud de aprobación con links firmados aprobar/rechazar | `POST /auth/admin-access-request` | SuperAdmin |
+| 3 | Confirmación de solicitud recibida | Verificación del challenge admin | Solicitante |
+| 4 | Solicitud de aprobación con links firmados aprobar/rechazar | Verificación del challenge admin | SuperAdmin |
 | 5 | Resultado (aprobado → rol ADMIN / rechazado → rol EMPLOYEE) | Decisión del SuperAdmin | Solicitante |
 | 6 | Verificación de email (magic link con botón "confirmar") | Registro mobile tras verificar OTP, y reenvíos (`/auth/email-verification/resend`) | Empleado |
 
@@ -27,12 +29,12 @@ Interfaz: `sendOtp({ phone, code })`. En dev: implementación `log` (config `WHA
 
 ## 3. Cloudflare R2 (storage de archivos) — `StorageService`
 
-Proveedor elegido por el humano (2026-09-15): **Cloudflare R2**. Motivos: egress (descargas) gratis siempre, free tier permanente de 10 GB, gestión trivial y **API 100% S3-compatible** — se usa con el SDK estándar de AWS S3 apuntando al endpoint de R2, así que migrar a otro proveedor S3-compatible es solo cambiar variables de entorno.
+Proveedor elegido por el humano (2026-09-15): **Cloudflare R2**. Racional de elección: API S3-compatible y costo/egress esperado al decidir; tarifas y límites se verifican antes del deploy, sin prometer condiciones permanentes — se usa con el SDK estándar de AWS S3 apuntando al endpoint de R2, así que migrar a otro proveedor S3-compatible es solo cambiar variables de entorno.
 
 Interfaz: `upload({ key, body, contentType })`, `delete({ key })`, `getSignedDownloadUrl({ key, expiresIn })`.
 
 - Config: `STORAGE_ENDPOINT` (endpoint S3 de la cuenta R2), `STORAGE_BUCKET`, `STORAGE_REGION=auto`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`.
-- **Uploads proxificados por el backend** (MVP): el cliente sube `multipart/form-data` al endpoint; el backend valida (extensión + magic bytes, 20 MB máx.) y persiste en el bucket. No se exponen URLs firmadas de subida en el MVP — centraliza validación y antivirus futuro.
+- **Uploads proxificados por el backend** (MVP): el cliente sube `multipart/form-data` al endpoint; el backend valida (extensión + magic bytes, 20 MiB máx., diez archivos por lote atómico con rollback de DB/bucket) y persiste en el bucket. No se exponen URLs firmadas de subida en el MVP — centraliza validación y antivirus futuro.
 - **Descargas con URL firmada** (15 min): `GET /timesheets/{id}/file` y `GET /documents/{id}/file` devuelven `{ data: { downloadUrl } }`.
 - Layout de claves: `timesheets/{employeeId}/{year}-{month}/{timesheetId}/{fileName}` y `documents/{employeeId}/{documentId}/{fileName}`.
 - Reemplazo de planilla: subir nueva clave y **borrar la anterior del bucket** (spec §39.5). Eliminación de documento: borrar clave (§40.5).

@@ -38,13 +38,13 @@ Seguí `docs/convenciones/superpowers.md`: usás `test-driven-development` (cuan
 
 ## Git
 
-- El leader te indica en el dispatch la branch de trabajo y si podés commitear.
+- El leader indica la branch de trabajo; solo la confirmación explícita del humano autoriza mutaciones git.
 - Nunca `push`, `merge`, `reset` ni mutaciones fuera de la branch indicada.
 
 ## Mientras trabajás
 
 - Documentá en `progress/implementer/current.md` MIENTRAS trabajás.
-- Ambigüedad o contradicción → `blocked` + pregunta, nunca inventar.
+- Ante ambigüedad, contrastá código y decisiones vigentes; si sigue faltando una definición, `blocked` + pregunta, nunca inventar.
 
 ## Al terminar
 
@@ -54,5 +54,9 @@ Seguí `docs/convenciones/superpowers.md`: usás `test-driven-development` (cuan
 
 ## Nunca
 
-- No despachás subagentes. No te autoaprobás. No tocás otros repos. No hacés mutaciones git fuera de lo que el leader autorizó en el dispatch (ver sección Git).
+- No despachás subagentes. No te autoaprobás. No tocás otros repos. No hacés mutaciones git sin confirmación explícita del humano.
 - **No editás archivos marcados `SYNCED-FROM-TEMPLATE`** — si un archivo común está mal, dejás la propuesta en `docs/changes_proposals/`.
+
+## Documentación vigente
+
+Seguí `docs/convenciones/convenciones-globales.md`: una decisión actual por tema con motivo breve, código como evidencia del estado real, sin historial. Actualizá `current.md` en lugar de appendear. El leader consolida y elimina artefactos resueltos; las propuestas comunes son temporales y se retiran tras incorporación y sync verificado.

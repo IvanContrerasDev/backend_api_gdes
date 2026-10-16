@@ -4,6 +4,10 @@
 **App(s):** backend
 **Creada:** 2026-09-15
 
+## Contrato vigente
+
+P-07 materializado en docs/03: PUT completo para editar clients/workplaces, filtros/órdenes fijos, validaciones geográficas y unicidades. Sin dirección/Place ID persistidos; sin cascada al desactivar. Tarea pendiente, sin implementación de endpoints.
+
 ## Contexto
 
 Mobile necesita el catálogo real de workplaces para marcar (hoy 3 lugares mock con IDs inconsistentes — su deuda #10) y admin gestiona la estructura client→workplace con configuración geográfica que luego usa la validación GPS de asistencia (F-005).
@@ -12,7 +16,7 @@ Mobile necesita el catálogo real de workplaces para marcar (hoy 3 lugares mock 
 
 **Incluye:**
 - Entidades `Client`, `Workplace` (y `Site` ya seedeada en F-001) con migraciones.
-- CRUD admin: `GET/POST /clients`, `GET/PATCH /clients/{id}`, `PATCH /clients/{id}/status`; ídem `/workplaces`. Sin DELETE (soft-delete por `status`).
+- CRUD admin: `GET/POST /clients`, `GET/PUT /clients/{id}`, `PATCH /clients/{id}/status`; ídem `/workplaces`. Sin DELETE (soft-delete por `status`).
 - `GET /sites` (catálogo de provincias, sin alta en MVP).
 - `GET /workplaces` para mobile (rol EMPLOYEE, solo activos, sin paginación).
 - Listados admin paginados con filtros (`search`, `clientId`, `siteId`, `status`) y orden server-side.
@@ -28,7 +32,7 @@ Mobile necesita el catálogo real de workplaces para marcar (hoy 3 lugares mock 
 
 ## Criterios de aceptación
 
-- [ ] Workplace exige `clientId` + `siteId` válidos (422/404 si no).
+- [ ] Workplace exige clientId/siteId válidos, con errores y validaciones del contrato común (Clientes y lugares).
 - [ ] Nada se elimina: deactivate deja `status=INACTIVE` y conserva historial.
 - [ ] `GET /workplaces` (mobile) devuelve solo activos con `siteName` y `clientName` resueltos.
 - [ ] Filtros y paginación responden con el envoltorio `{ data, pagination }`.

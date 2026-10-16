@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-Nivel Prisma. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual solo contiene User y Site, con 18 enums. No incluye emailVerifiedAt, modelos de auth ni entidades de negocio. Los enums Prisma todavía incluyen REJECTED y omiten OtpPurpose.LOGIN; la definición vigente abajo requiere futuras migraciones. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -38,9 +38,9 @@ NO existe asignación fija `User ↔ Workplace` (spec §8): la relación es indi
 | address | string | required | Domicilio |
 | birthDate | date | required | |
 | siteId | uuid | FK → Site | Provincia del empleado (spec §29.1) |
-| cuil | string? | nullable | Solo existe en el mock de perfil de mobile; origen de carga a confirmar |
-| hireDate | date? | nullable | Ídem |
-| position | string? | nullable | Ídem (puesto) |
+| cuil | string? | nullable | Nullable; Admin puede actualizarlo (P-06), carga histórica inicial sin definir |
+| hireDate | date? | nullable | Nullable; actualizable por Admin |
+| position | string? | nullable | Nullable; actualizable por Admin |
 | role | UserRole | required | Ver enums |
 | accountStatus | AccountStatus | default ACTIVE | INACTIVE bloquea todo acceso y operación (spec §6/§11.4) |
 | emailVerifiedAt | timestamp? | nullable | `null` hasta confirmar el email (magic link del registro mobile). Sin verificar → login bloqueado (403 `EMAIL_NOT_VERIFIED`) |
@@ -83,7 +83,7 @@ Nunca se elimina; INACTIVE conserva historial (spec §30).
 
 ### AttendanceEvent (append-only)
 
-Evento atómico emitido por mobile (o cargado por admin). Inmutable: nunca se actualiza ni se borra. Es la fuente de la proyección.
+Evento atómico emitido por mobile. Las correcciones manuales de Admin no generan eventos; otros usos del enum EventOrigin.ADMIN no están definidos. Inmutable: nunca se actualiza ni se borra. Es la fuente de la proyección.
 
 | Campo | Tipo | Constraint | Notas |
 |---|---|---|---|
@@ -173,9 +173,9 @@ Sí se puede eliminar (con confirmación en UI, §40.5). No se vincula técnicam
 
 - `RefreshToken`: id, userId, tokenHash, expiresAt, rotatedAt?, revokedAt?, replacedById? — rotación con detección de reuso.
 - `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `LOGIN` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.
-- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h), consumedAt? — magic link de verificación de email, un solo uso.
+- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h de diseño; ratificación de TTL pendiente), consumedAt? — magic link de verificación de email, un solo uso.
 - `PasswordResetToken`: id, userId, tokenHash, expiresAt, consumedAt? — un solo uso.
-- `AdminAccessRequest`: id, userId, status (`PENDING` / `APPROVED` / `REJECTED`), decisionTokenHash (links firmados del email al SuperAdmin), expiresAt, decidedAt?, decidedBy?.
+- `AdminAccessRequest`: id, userId, status (`PENDING` / `APPROVED` / `REJECTED`), decisionTokenHash (links firmados del email al SuperAdmin), expiresAt (7 días), decidedAt?, decidedBy?. Una solicitud pendiente se cancela si la cuenta pasa a INACTIVE; representación persistida de cancelación pendiente de definir. Payload pre-verificación separado, retenido máximo 72 h; no crea cuenta ni modifica rol antes de OTP email.
 
 ## Enums (definición central — cierra los pendientes de spec §89)
 
@@ -184,10 +184,10 @@ enum UserRole { EMPLOYEE, TO_BE_ADMIN, ADMIN, SUPER_ADMIN }
 enum AccountStatus { ACTIVE, INACTIVE }
 enum EntityStatus { ACTIVE, INACTIVE }              // Client, Workplace
 enum RecordStatus { COMPLETE, INCOMPLETE }
-enum ReviewStatus { NONE, PENDING, APPROVED, REJECTED, MANUAL_LOADED }
+enum ReviewStatus { NONE, PENDING, APPROVED, MANUAL_LOADED }
 enum IntervalStatus { OPEN, CLOSED, SEMI_CLOSED }
 enum IntervalType { WORK, ABSENCE }
-enum IntervalReviewStatus { NONE, PENDING, APPROVED, REJECTED }
+enum IntervalReviewStatus { NONE, PENDING, APPROVED }
 enum RecordOrigin { AUTOMATIC, MANUAL }
 enum AttendanceEventType { CHECK_IN, CHECK_OUT, ABSENCE }
 enum EventOrigin { MOBILE, ADMIN }
@@ -212,4 +212,8 @@ Los catálogos son **fijos en código, no configurables** (spec Parte 5). El bac
 
 ## Formatos de archivo permitidos (planillas y documentos)
 
-`pdf, jpg, jpeg, png, doc, docx, txt` — máx. **20 MB** por archivo (spec §39/§40). Se valida extensión **y** magic bytes en el backend.
+`pdf, jpg, jpeg, png, doc, docx, txt` — máx. **20 MiB (20 × 1024 × 1024 bytes)** por archivo (spec §39/§40). Se valida extensión **y** magic bytes en el backend.
+
+## Concurrencia y validación de diseño
+
+AttendanceRecord requiere version para expectedVersion y unicidad (userId, workplaceId, date). Aprobación y corrección incrementan versión; no se borran registros. Solo WORK CLOSED suma totalWorkMinutes; ver tabla de completitud en 05. radiusMeters entero 10–10000, gpsAccuracyThreshold null o entero 1–1000. Dirección/Place ID de Google no se persisten en Workplace. Validaciones/unicidades y DTOs públicos de P-06/P-07 en 03; no exponer passwordHash ni fileKey. Refresh web requiere expiración absoluta; esquema de generación/CSRF pendiente de ratificar.

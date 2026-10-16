@@ -9,6 +9,6 @@ En este repo NO se usa `finishing-a-development-branch`: hace merge, push, PRs y
 
 Cuando una feature queda aprobada por el reviewer:
 
-1. El leader marca `done` en `feature_list.json` y archiva el estado en `progress/`.
+1. El leader marca `done` en `feature_list.json` y consolida docs vigentes y limpia artefactos resueltos según `docs/convenciones/convenciones-globales.md`.
 2. El leader le avisa al humano que la feature está lista para integrar.
 3. El humano decide si se mergea, se pushea o se abre PR, y cuándo.

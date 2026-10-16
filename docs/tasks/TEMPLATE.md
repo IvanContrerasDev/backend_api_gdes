@@ -2,9 +2,11 @@
 
 # F-NNN — <Título de la feature>
 
-**Estado:** pending | in_progress | done
+**Estado:** pending | in_progress | blocked
 **App(s):** mobile | admin | backend (una o varias)
 **Creada:** YYYY-MM-DD
+
+Artefacto temporal: al cerrar, consolidar decisión vigente y motivo en docs oficiales, actualizar referencias y eliminar spec/plan. No usarlo como documentación permanente.
 
 ## Contexto
 
@@ -39,8 +41,8 @@
 
 ## Review
 
-(lo completa el reviewer — una subsección por ronda)
+(lo completa el reviewer: veredicto y evidencia actuales; reemplazar rondas anteriores)
 
-### Ronda 1 — YYYY-MM-DD
+### Veredicto vigente
 - Veredicto: aprobado | cambios requeridos
 - Ítems: ...

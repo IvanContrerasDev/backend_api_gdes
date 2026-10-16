@@ -34,20 +34,37 @@
 | 409 | `REQUEST_ALREADY_DECIDED` | false | Solicitud admin ya resuelta |
 | 410 | `OTP_EXPIRED` / `TOKEN_EXPIRED` | false | Código/token vencido |
 | 422 | `VALIDATION_ERROR` | false | Error de validación de campos |
-| 422 | `INVALID_TIMESTAMP` | false | `occurredAt` en futuro > 5 min |
-| 422 | `FILE_TOO_LARGE` | false | Archivo > 20 MB |
+| 422 | `INVALID_TIMESTAMP` | false | Reservado; política de futuro/clock skew pendiente de ratificación |
+| 422 | `FILE_TOO_LARGE` | false | Archivo > 20 MiB |
 | 422 | `FILE_TYPE_NOT_ALLOWED` | false | Extensión/contenido no permitido |
 | 429 | `TOO_MANY_ATTEMPTS` | true | Rate limit / intentos de OTP |
 | 429 | `OTP_RESEND_COOLDOWN` | true | Reenvío de OTP antes de 60 s |
 | 500 | `INTERNAL_ERROR` | true | Error no controlado |
 
-Regla: ningún endpoint devuelve errores fuera de esta tabla sin actualizar este doc y `contratos-api.md`.
+Los códigos siguientes son diseño pendiente de implementar, salvo fallbacks generales del filtro actual. No se infiere que ApiException valide catálogo (acepta cualquier string). Nuevos códigos requieren documentar el contrato común y este catálogo.
+
+| HTTP | code | retryable | Uso |
+|---|---|---|---|
+| 410 | MONTHLY_SNAPSHOT_EXPIRED | false | Reiniciar lectura mensual |
+| 400 | MONTHLY_SNAPSHOT_MISMATCH | false | Snapshot de otro contexto |
+| 409 | RECORD_ALREADY_EXISTS / RECORD_VERSION_CONFLICT | false | Unicidad / concurrencia |
+| 422 | RECORD_INTERVALS_REQUIRED | false | Corrección deja cero intervalos |
+| 422 | ATTENDANCE_EVENT_TOO_OLD | false | Más de 24 h al recibir; frontera inclusiva |
+| 409 | ADMIN_REQUEST_IDENTITY_CONFLICT | false | Identidad en conflicto tras verificar |
+| 403 | ADMIN_REQUEST_NOT_ELIGIBLE | false | Solicitud no elegible |
+| 404 | USER_NOT_FOUND / CLIENT_NOT_FOUND / WORKPLACE_NOT_FOUND | false | Recurso inexistente |
+| 409 | USER_EMAIL_ALREADY_EXISTS / USER_DNI_ALREADY_EXISTS / USER_EMPLOYEE_ID_ALREADY_EXISTS | false | Unicidad P-06 en gestión users |
+| 400 | INVALID_USER_DATA / INVALID_SITE / WEAK_PASSWORD | false | Validación P-06 |
+| 409 | CLIENT_NAME_ALREADY_EXISTS / WORKPLACE_NAME_ALREADY_EXISTS / CLIENT_INACTIVE | false | Unicidad / cliente inactivo P-07 |
+| 400 | INVALID_CLIENT_DATA / INVALID_WORKPLACE_DATA / INVALID_GEO_CONFIGURATION | false | Validación P-07 |
+
+Registro mobile conserva sus códigos de unicidad originales; no sustituirlos por códigos de gestión users sin decisión. Errores concretos CSRF/sesión y otros DTO pendientes no se inventan.
 
 ## Paginación y orden
 
 - `?page=1&pageSize=25`, `pageSize` máx. 100. Registros: default 50 (infinite scroll, spec §84).
 - Respuesta: `{ data: [], pagination: { page, pageSize, totalItems, totalPages } }`.
-- Orden: `?sortBy=<campo>&order=asc|desc`; defaults por recurso documentados en `03-contratos-api.md`.
+- Empleados/clientes/lugares/matriz usan orden fijo del contrato común. `sortBy/order` solo si el recurso publica allowlist en 03; no exponer orden libre por defecto.
 
 ## Fechas y timezone
 
@@ -57,13 +74,13 @@ Regla: ningún endpoint devuelve errores fuera de esta tabla sin actualizar este
 
 ## Archivos
 
-- Formatos: `pdf, jpg, jpeg, png, doc, docx, txt`. Máx. **20 MB** por archivo.
+- Formatos: `pdf, jpg, jpeg, png, doc, docx, txt`. Máx. **20 MiB (20 × 1024 × 1024 bytes)** por archivo.
 - Validación en backend por extensión **y** magic bytes (mobile no valida tamaño ni cantidad — sus deudas #5/#16 las absorbe el backend).
-- Cantidad de archivos por upload: máx. 10 por request (límite nuevo del backend, ausente en las specs).
+- Cantidad de archivos por upload: máx. 10 por request (ratificado; lote atómico, validar capacidad de proxy al desplegar).
 
 ## Soft-delete
 
-Nada del dominio se borra físicamente de la base: users/clients/workplaces se desactivan (`status`), registros y planillas no se eliminan jamás. Única excepción: `Document` (legajo) sí se elimina (spec §40.5), y los archivos reemplazados/eliminados sí se borran del bucket.
+Nada del dominio se borra físicamente de la base: users se desactiva con `accountStatus`; clients/workplaces con `status`, registros y planillas no se eliminan jamás. Única excepción: `Document` (legajo) sí se elimina (spec §40.5), y los archivos reemplazados/eliminados sí se borran del bucket.
 
 ## Commits y PRs del subrepo
 

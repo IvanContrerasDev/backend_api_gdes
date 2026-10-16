@@ -2,42 +2,27 @@
 
 # Visión del sistema GdeS
 
-> Documento relevado de fuentes reales. Nada aquí es inventado: cada afirmación proviene de los docs de `mobile_app_gdes/docs/` o de `admin_web_app/docs/spec_definition.md`. Lo que no existe aún (backend) se marca explícitamente como pendiente.
+GdeS gestiona registros laborales: empleados marcan entrada/salida/ausencia con ubicación desde mobile; RRHH/administración gestiona empleados, organización, registros y archivos desde Admin. El backend centraliza autorización, reglas de negocio, persistencia y servicios externos. No hay comunicación directa mobile–Admin: **mobile → API ← Admin**.
 
-## Qué es GdeS
+## Componentes y estado real
 
-GdeS es un sistema de registros laborales. Los empleados registran entrada/salida/ausencia con geolocalización desde la app móvil; el personal administrativo (recursos humanos, gerentes y otros responsables) gestiona, revisa y garantiza la calidad de la información generada desde la web admin; el backend centraliza lógica de negocio, almacenamiento de datos, autenticación y procesamiento. Fuente: `admin_web_app/docs/spec_definition.md` Parte 1 (secciones 1 y 2), que también menciona servicios externos como envío de emails y almacenamiento de archivos.
+| Repo | Responsabilidad | Implementación observada |
+|---|---|---|
+| `mobile_app_gdes/` | App Expo/React Native para EMPLOYEE; marcaciones, planillas, contingencia y perfil | Navegación y selectores reales; servicios mock, sesión local AsyncStorage sin tokens; cola offline existente pero no conectada a UI |
+| `admin_web_app/` | React/Vite; empleados, clientes/lugares, matriz mensual, planillas, legajos e inicio | Módulos y adaptadores mock/HTTP implementados; mocks como entorno operativo, integración real pendiente |
+| `backend_api_gdes/` | API NestJS/TypeScript, Prisma/PostgreSQL, monolito modular REST | Bootstrap, User/Site, infraestructura de errores/validación/guards y `GET /health`; módulos de auth/dominio aún no registrados |
 
-## Componentes
+Evidencia: `mobile_app_gdes/services/`, `stores/authStore.ts`; `admin_web_app/src/app/router.tsx`, `src/services/`, `src/mocks/`; `backend_api_gdes/src/app.module.ts`, `src/main.ts`, `prisma/schema.prisma`. No inferir endpoints disponibles de una spec, un enum o un adaptador.
 
-| App | Repo | Usuarios | Rol en el sistema | Estado |
-|---|---|---|---|---|
-| Mobile | `mobile_app_gdes/` | Empleados | Autenticarse, registrar entrada/salida/ausencia con geolocalización, cargar planillas y documentación de contingencia, consultar perfil y cerrar sesión (`mobile_app_gdes/docs/01-producto-y-alcance-funcional.md`, resumen ejecutivo del README) | App navegable con mocks, sin backend real |
-| Admin Web | `admin_web_app/` | RRHH / gerentes / administradores | Gestión operativa de registros, gestión de empleados, estructura organizacional (clientes, sites, workplaces), gestión documental (planillas y legajos) y supervisión operacional vía dashboard (`spec_definition.md` Parte 1, secciones 1-2) | Spec completa, sin código |
-| Backend | `backend_api_gdes/` | (servicio) | Lógica de negocio, almacenamiento, auth, procesamiento | Por definir |
+## Responsabilidades y reglas de dominio
 
-Roles definidos en la spec de admin (Parte 1, sección 5): `Employee` (solo app móvil), `toBeAdmin` (empleado pendiente de aprobación, sin acceso a la web admin), `Admin` (todas las operaciones del MVP en la web admin) y `SuperAdmin` (mismas vistas que Admin en el MVP; sus procesos, como aprobación de solicitudes administrativas por email, son responsabilidad del backend). En mobile hoy solo existe el rol empleado autenticado (`mobile_app_gdes/docs/01`, sección Actor).
+- Mobile captura evidencia; backend persiste eventos inmutables y proyecta registros diarios con intervalos; Admin consulta, corrige la proyección y aprueba sin alterar eventos. Motivo: separar evidencia original de intervención administrativa.
+- Identidad común: email/DNI/legajo únicos; registro único por empleado/lugar/fecha GMT-3. No hay asignaciones permanentes empleado–lugar; la matriz refleja actividad del mes.
+- Roles: EMPLOYEE en mobile; ADMIN/SUPER_ADMIN en Admin; TO_BE_ADMIN espera decisión y no accede a esas aplicaciones. Estado INACTIVE bloquea nuevas operaciones, conserva historia y permite correcciones retrospectivas autorizadas.
+- Frontends concentran acceso a datos en servicios/adaptadores para sustituir mocks sin acoplar componentes a HTTP. Los mocks no demuestran permisos, persistencia, subida real o seguridad de navegador.
 
-## Flujos de datos principales
+Las formas públicas, reglas de integración y pendientes viven exclusivamente en `contratos-api.md`; no se duplican aquí. Stack/integraciones internas del backend: sus docs `01-arquitectura-y-stack.md` y `06-integraciones.md`. Requisitos de Admin: `docs/spec_definition.md`; estado local y comportamiento mobile: su `docs/README.md`.
 
-Todo lo listado es **mock hoy → backend mañana**. Fuentes: `mobile_app_gdes/docs/02-flujos-de-usuario.md` y `05-servicios-datos-y-contratos.md`.
+## Organización de trabajo y documentación
 
-- **Autenticación**: login email/contraseña contra credenciales fijas (mock); login Google simulado con OTP que acepta cualquier código de 6 dígitos; registro y recuperación validan localmente pero no envían datos. La sesión (`AuthUser`) se persiste localmente con Zustand persist + AsyncStorage; **no existe token**.
-- **Marcaciones (entrada/salida/ausencia)**: el empleado elige lugar y acción, se obtiene GPS de alta precisión y se construye un `RegisterRequest`; el servicio simula éxito. El estado laboral (`isWorking`) vive solo en memoria. Existe infraestructura de cola/sincronización offline (`offlineRegisterService`, `syncService`) pero **está inactiva**: la UI rechaza la marcación sin Internet.
-- **Lugares de trabajo**: tres lugares fijos mock; favoritos, lugar reciente por franja (mañana/tarde) e historial se persisten localmente en AsyncStorage.
-- **Planillas**: selección de imágenes por cámara/galería real; el envío es simulado (`DocumentUploadRequest` con `months: []` fijo).
-- **Documentación de contingencia**: selector de archivos/cámara real con filtro de extensiones; el envío es simulado (`ContingencyUploadRequest` con `workplaceId: null`).
-- **Perfil**: muestra datos fijos mock, distintos del usuario autenticado.
-
-En la web admin (spec, sin código) los flujos esperados son consulta/edición/creación manual de registros, revisión de registros con problemas de validación, gestión de empleados (alta, modificación, activación/desactivación, legajos y planillas), gestión de clientes/sites/workplaces con configuración geográfica, procesamiento de planillas y dashboard de supervisión (`spec_definition.md` Parte 1, sección 2).
-
-## Dependencias entre apps
-
-Todo pasa por el backend: **mobile → API ← admin**. No existe comunicación directa mobile↔admin. La spec de admin (Parte 8, sección 79) exige que el frontend admin se diseñe desacoplado del backend: la lógica de negocio del frontend no debe depender de URLs de endpoints, formatos internos de respuestas ni librerías HTTP específicas, de modo que los mocks iniciales se reemplacen por la API real sin tocar componentes ni hooks. En mobile, los servicios mock ya concentran los puntos donde se conectará el backend (`authService`, `registerService`, `workplaceService`, `uploadDocumentService`, `documentService`).
-
-La unicidad del dominio la define el backend: email, número de legajo (`employee_id`) y DNI son únicos en todo el sistema, y un empleado solo puede tener un registro por día por lugar de trabajo — restricción `(user_id, workplace_id, date)` — con múltiples intervalos dentro del registro (`spec_definition.md` Parte 1, secciones 7 y 8).
-
-## Pendiente de definir con el humano
-
-- Stack y diseño del backend (todo lo que hoy es mock en mobile y todo lo que la spec de admin delega al backend).
-- Servicios externos (envío de emails, almacenamiento de archivos, integraciones futuras) mencionados en la spec sin definición técnica.
+GdesProject mantiene template y coordinación común; cada subrepo tiene leader, implementer y reviewer propios. Los acuerdos comunes se editan en template y se propagan; los detalles locales se mantienen en el documento de su tema. Reglas y racional de esta política: `../convenciones/convenciones-globales.md`.

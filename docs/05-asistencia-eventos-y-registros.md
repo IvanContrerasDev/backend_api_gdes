@@ -1,5 +1,7 @@
 # 05 — Asistencia: eventos y registros
 
+**Estado:** diseño aprobado pendiente; no hay implementación de ingesta, proyección ni registros. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
+
 El corazón del sistema. Reconcilia los dos modelos que relevó `contratos-api.md` (divergencia 2, resuelta por el humano):
 
 - **Mobile emite eventos atómicos**: el empleado solo registra que ingresó o que se fue (`entrada`/`salida`/`ausencia` con un timestamp cada uno).
@@ -24,8 +26,8 @@ El backend guarda **ambos**: eventos append-only como fuente de verdad auditable
 
 ## Marcaciones tardías y timestamps
 
-- Se aceptan eventos con `occurredAt` en el pasado (sincronización offline). No hay ventana máxima definida en MVP; si hiciera falta, se configura por env (pendiente solo si aparece el caso).
-- `occurredAt` (hora del dispositivo) es el tiempo **oficial** del evento; `receivedAt` y `locationTimestamp` quedan persistidos para auditoría. Si la hora del dispositivo está visiblemente corrupta (futuro lejano), se rechaza con 422 `INVALID_TIMESTAMP` (futuro > 5 min).
+- Ventana inclusiva ratificada: receivedAt del servidor menos occurredAt <= 24 h. Más antiguos → 422 ATTENDANCE_EVENT_TOO_OLD, retryable=false (código materializado para este contrato). La frontera exacta de 24 h se acepta; 24 h + 1 ms se rechaza. Especificación, todavía sin pruebas ejecutables de backend.
+- occurredAt es hora del dispositivo; receivedAt y locationTimestamp se conservan para auditoría. Política para timestamps futuros/clock skew pendiente; el umbral previo de 5 min no está ratificado y no se impone.
 
 ## Validaciones GPS (spec §16/§33.3/§47)
 
@@ -45,10 +47,10 @@ Al ingerir, sobre el workplace del evento:
 
 ## Edición y revisión por admin (spec §25/§26)
 
-- Edición total: corregir horarios, agregar intervalos, crear registros desde cero (`POST /records`).
-- Toda intervención del admin sobre un registro automático marca `reviewStatus=MANUAL_LOADED` y `origin=MANUAL` (§16/§17).
+- Edición: corregir horarios, agregar/actualizar/eliminar intervalos (conservar al menos uno e identidad diaria inmutable), crear registros desde cero (`POST /records`).
+- Toda corrección de datos/observaciones del admin sobre un registro automático marca `reviewStatus=MANUAL_LOADED` y `origin=MANUAL` (§16/§17).
 - Los intervalos creados/editados por admin tienen `origin=MANUAL` y **no** generan `AttendanceEvent` (los eventos son la huella de las marcaciones reales; la carga manual vive solo en la proyección).
-- Aprobación/rechazo: `PATCH /records/{id}/review`. Un `REJECTED` sigue visible, destacado y editable, y puede volver a `APPROVED` tras corrección (§16).
+- Aprobación pura: `PATCH /records/{id}/review` con expectedVersion y reviewStatus=APPROVED. Conserva origen, horarios, observaciones e intervalos. No existe REJECTED. Conflicto de versión devuelve 409 RECORD_VERSION_CONFLICT.
 - **Prohibido eliminar registros** (§26).
 - `Interval.reviewStatus` (§22) permite revisión a nivel intervalo cuando haga falta granularidad.
 
@@ -57,3 +59,20 @@ Al ingerir, sobre el workplace del evento:
 - `RegisterRequest` pasa a inglés y al contrato `POST /attendance/events`: `action` → `type`, `timestamp` → `occurredAt`, **agregar `clientRequestId`** (usar el `id` de su cola offline) y **`absenceReason`** (hoy el motivo queda en estado local — su deuda #9).
 - `RegisterResponse { success, message, registrationId }` → `{ data: { eventId, recordId, message } }`.
 - Activar la suscripción de conectividad para disparar `syncPendingRegisters()` (hoy el import está comentado — su deuda #8).
+
+## Completitud vigente y casos de referencia
+
+| Tipo/extremos | Intervalo | Minutos | Registro si único intervalo |
+|---|---|---|---|
+| WORK ambos | CLOSED | diferencia | COMPLETE |
+| WORK solo inicio | OPEN | 0 | INCOMPLETE |
+| WORK solo fin | SEMI_CLOSED | 0 | INCOMPLETE |
+| ABSENCE ninguno o ambos | CLOSED | 0 | COMPLETE |
+| ABSENCE solo inicio | OPEN | 0 | INCOMPLETE |
+| ABSENCE solo fin | SEMI_CLOSED | 0 | INCOMPLETE |
+
+Total = suma WORK CLOSED, sin campo de horas de ausencia. Entrada 09:00, entrada 11:00, salida 12:00, salida 18:00 cierra 11–12 y 09–18: 600 min aun con solapamientos. No reescribir históricos; nuevas cargas manuales rechazan solapamientos, WORK incompletos y registros sin intervalos. Motivo de ausencia opcional siempre.
+
+Medianoche GMT-3: entrada 2026-09-18T02:50:00Z y salida 2026-09-18T03:10:00Z producen dos registros (17/09 OPEN; 18/09 SEMI_CLOSED), INCOMPLETE, 0 min cerrados. No cerrar ni fusionar automáticamente. Estos ejemplos son especificación; falta evidencia de ejecución real, incluyendo eventos offline fuera de orden y concurrencia.
+
+Revisión individual de intervalos fuera del incremento actual: no inferir ruta. Correcciones históricas para entidades inactivas permitidas, con revalidación; operaciones nuevas bloqueadas, lectura conservada.

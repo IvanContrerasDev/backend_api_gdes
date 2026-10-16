@@ -9,14 +9,15 @@
         "backend"
       ],
       "estado": "done",
-      "taskSpec": "docs/tasks/F-001-backend-bootstrap.md",
+      "taskSpec": null,
       "criterios": [
         "Proyecto NestJS con TypeScript estricto compila y levanta",
         "Prisma conectado a PostgreSQL con schema inicial (User, Site + seed de provincias)",
         "Filtro de errores, interceptor { data }, ValidationPipe y guards globales funcionando",
         "Dockerfile y docker-compose.yml (api + postgres) operativos",
         "ConfigModule valida variables de entorno al boot"
-      ]
+      ],
+      "documentation": "docs/01-arquitectura-y-stack.md"
     },
     {
       "id": "F-002",
@@ -27,7 +28,7 @@
       "estado": "pending",
       "taskSpec": "docs/tasks/F-002-backend-auth-base.md",
       "criterios": [
-        "POST /auth/login acepta email o legajo, valida rol por client (MOBILE solo EMPLOYEE)",
+        "POST /auth/login acepta email o legajo, valida rol por client (MOBILE solo EMPLOYEE); tokens solo tras OTP mobile o 2FA web según contrato final",
         "Access token 30 min + refresh 7 días con rotación y detección de reuso",
         "POST /auth/refresh, POST /auth/logout operativos",
         "Errores con formato { error: { code, message, retryable } } y códigos del catálogo"
@@ -58,7 +59,7 @@
       "taskSpec": null,
       "criterios": [
         "CRUD de users sin delete, con unicidad email/legajo/DNI",
-        "PATCH /users/{id}/status para activar/desactivar",
+        "PATCH /users/{id}/account-status con accountStatus para activar/desactivar",
         "GET /profile con los campos de PerfilScreen",
         "Búsqueda parcial y orden default apellido+nombre"
       ]
@@ -88,9 +89,9 @@
       "estado": "pending",
       "taskSpec": null,
       "criterios": [
-        "GET /records paginado (default 50) con todos los filtros de la spec §83",
-        "POST /records y PATCH /records/{id} marcan MANUAL_LOADED/origin MANUAL",
-        "PATCH /records/{id}/review con APPROVED/REJECTED (REJECTED reversible)",
+        "GET /records/monthly por filas completas, snapshot TTL 15 min, filtros y totales del contrato común",
+        "POST /records y PATCH /records/{id} con expectedVersion en corrección, ADD/UPDATE/DELETE de intervalos y al menos uno; MANUAL_LOADED/origin MANUAL",
+        "PATCH /records/{id}/review con expectedVersion y APPROVED; aprobación pura sin cambiar origen/intervalos/eventos",
         "No existe DELETE de registros"
       ]
     },
@@ -103,9 +104,9 @@
       "estado": "pending",
       "taskSpec": null,
       "criterios": [
-        "POST /timesheets y POST /documents multipart con validación extensión + magic bytes, 20 MB",
+        "POST /timesheets y POST /documents multipart con validación extensión + contenido, 20 MiB por archivo y máximo 10 por lote atómico",
         "StorageService sobre R2 (API S3-compatible): upload, delete, URL firmada de descarga (15 min)",
-        "Timesheet: sequenceNumber por período, estados PENDING/LOADED/ERROR, reemplazo borra archivo anterior",
+        "Timesheet: sequenceNumber por período, estados PENDING/LOADED/ERROR, reemplazo preserva original hasta confirmar nuevo válido; estado/auditoría/concurrencia pendientes de ratificación",
         "Document: catálogo de 9 tipos, edición tipo/nombre, eliminación con borrado en el bucket",
         "GET /catalogs con labels en español"
       ]
@@ -137,8 +138,8 @@
       "estado": "pending",
       "taskSpec": null,
       "criterios": [
-        "GET /dashboard/summary con pendingTimesheets, incompleteRecords, pendingReviewRecords, recordsWithAbsences",
-        "Filtros opcionales month/year/siteId coherentes con los listados"
+        "Contadores pendingTimesheets, incompleteRecords, pendingReviewRecords y recordsWithAbsence del mes seleccionado; ruta final y byProvince pendientes de acuerdo",
+        "Período month/year seleccionado y destino coherente; scope provincial/siteId pendiente de ratificación, sin inferirlo del mock"
       ]
     }
   ]

@@ -1,6 +1,8 @@
 # 03 — Contratos API
 
-Convenciones REST y endpoints completos. Este doc es la materialización de `../../docs/arquitectura/contratos-api.md` para el backend; cualquier cambio de contrato exige actualizar AMBOS archivos en la misma tarea y avisar al leader.
+Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
+
+**Disponibilidad real:** solo `GET /health`, sin prefijo, devuelve `{ data: { status: "ok" } }`. `src/app.module.ts` registra únicamente HealthController y `src/main.ts` no configura `/api/v1`, CORS ni cookies. Todos los endpoints siguientes están **pendientes de implementar**, incluidos auth, catálogos y uploads. Un diseño documentado no demuestra integración real. Los DTOs expresamente marcados pendientes necesitan confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -22,13 +24,13 @@ Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart
 
 - `?page=1&pageSize=25` (máx. 100). El módulo de registros usa `pageSize=50` para infinite scroll (spec §84).
 - Filtros explícitos en query string: `GET /records?month=5&year=2026&siteId=<uuid>&employeeId=<uuid>&status=INCOMPLETE`.
-- Orden: `?sortBy=lastName&order=asc`.
+- Orden fijo para empleados/clientes/lugares/matriz según contrato común; sortBy/order solo donde el recurso tenga allowlist publicada.
 - Paginación, filtros y orden son **100% server-side** (spec §59/§65).
 
 ### Semántica HTTP
 
-- `GET` listado/detalle, `POST` crear/acciones, `PATCH` actualización parcial, `DELETE` solo para documents (legajo).
-- Activar/desactivar: `PATCH /{resource}/{id}/status` con `{ "status": "ACTIVE" | "INACTIVE" }`.
+- `GET` listado/detalle, `POST` crear/acciones, `PUT` reemplazo completo de campos editables de clients/workplaces, `PATCH` actualización parcial, `DELETE` solo para documents (legajo).
+- Activar/desactivar: clients/workplaces usan `PATCH /{resource}/{id}/status` con `{ status }`; users usa `PATCH /users/{id}/account-status` con `{ accountStatus }`.
 - Códigos: 200 OK, 201 Created, 204 No Content; errores 400/401/403/404/409/422/429/500.
 
 ### Nombres e idioma
@@ -44,13 +46,13 @@ Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart
 ### POST /auth/login
 Login de empleado (mobile) o admin (web). Acepta **email o legajo** en `identifier`.
 
-Request: `{ "identifier": string, "password": string, "client": "MOBILE" | "ADMIN" }`
+Request: `{ "identifier": string, "password": string, "client": "MOBILE" | "ADMIN", "rememberSession"?: boolean }`. `rememberSession` corresponde solo a ADMIN.
 
 - `client=MOBILE`: solo rol `EMPLOYEE`. Otro rol → 403 `ROLE_NOT_ALLOWED`.
 - Email sin verificar → 403 `EMAIL_NOT_VERIFIED` (sin enviar OTP; ver flujo 4 de `04-auth-y-seguridad.md`). Credenciales válidas + email verificado → dispara OTP WhatsApp (202 + `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`).
 - `client=ADMIN`: roles `ADMIN`/`SUPER_ADMIN` → dispara 2FA (202 + `{ "data": { "twoFactorRequired": true, "challengeId": "<uuid>" } }`). `TO_BE_ADMIN` → 403 `ADMIN_ACCESS_PENDING` ("Su solicitud de acceso administrativo se encuentra pendiente de aprobación.", spec §10.3). `EMPLOYEE` → 403 `ROLE_NOT_ALLOWED`.
 
-`/auth/login` siempre responde 202 (OTP mobile o 2FA admin): el 200 con tokens solo lo devuelven `POST /auth/otp/verify` (mobile) y `POST /auth/login/2fa/verify` (admin), con esta forma:
+`/auth/login` siempre responde 202 (OTP mobile o 2FA admin): el 200 con tokens solo lo devuelven `POST /auth/otp/verify` (mobile), con esta forma; la respuesta web 2FA se define en Sesión web y no lleva refresh en JSON:
 ```json
 { "data": { "user": { "id": "...", "firstName": "...", "lastName": "...", "email": "...", "employeeId": "...", "role": "EMPLOYEE" },
             "tokens": { "accessToken": "...", "refreshToken": "...", "expiresIn": 1800 } } }
@@ -58,7 +60,7 @@ Request: `{ "identifier": string, "password": string, "client": "MOBILE" | "ADMI
 Errores: 401 `INVALID_CREDENTIALS`, 403 `ACCOUNT_INACTIVE`, 403 `ROLE_NOT_ALLOWED`, 403 `ADMIN_ACCESS_PENDING`, 403 `EMAIL_NOT_VERIFIED`, 429 `TOO_MANY_ATTEMPTS`.
 
 ### POST /auth/login/2fa/verify
-Request: `{ "challengeId": uuid, "code": string }` → 200 igual que login. Errores: 401 `INVALID_OTP`, 410 `OTP_EXPIRED`, 429 `TOO_MANY_ATTEMPTS`.
+Request: `{ "challengeId": uuid, "code": string }` → 200 `WebTokenResponse`; emite cookie HttpOnly. Sin refresh en JSON. Errores: 401 `INVALID_OTP`, 410 `OTP_EXPIRED`, 429 `TOO_MANY_ATTEMPTS`.
 
 ### POST /auth/google
 Login mobile con Google. Request: `{ "idToken": string, "phone": string }`. El backend verifica el `idToken` contra Google, asocia/encuentra el usuario por email y —solo si el email está verificado— envía OTP por WhatsApp al `phone` registrado.
@@ -83,7 +85,7 @@ Registro de empleado desde mobile. Request:
 Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`OtpCode.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
 
 ### GET /auth/email/verify
-Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso, 24 h). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
+Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso; TTL de diseño 24 h pendiente de ratificación, ver 04). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
 
 ### POST /auth/email-verification/resend
 Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Reenvía el email de verificación solo si la cuenta existe y sigue sin verificar.
@@ -101,7 +103,7 @@ Request: `{ "refreshToken": string }` → 200 `{ "data": { "tokens": { "accessTo
 Autenticado. Invalida el refresh token activo. → 204.
 
 ### POST /auth/admin-access-request
-Solicitud de acceso admin (spec §10). Request: `{ "email": string }` (el empleado debe existir o se crea como `TO_BE_ADMIN` con datos mínimos — ver flujo completo en `04-auth-y-seguridad.md`). → 202 `{ "data": { "submitted": true } }`. Envía confirmación al solicitante y solicitud al SuperAdmin.
+Solicitud completa de diez campos + challenge email previo; ver sección Solicitud admin. Nunca crea cuenta ni cambia rol antes de verificar el email.
 
 ### Confirmación de solicitud admin (links del email al SuperAdmin)
 Los emails al SuperAdmin contienen dos links (aprobar / rechazar) que apuntan al **frontend admin** (`ADMIN_FRONTEND_URL/admin-access/confirm?token=...&decision=APPROVE|REJECT`). Esa pantalla confirma la acción y llama al backend:
@@ -131,14 +133,14 @@ Request:
 
 Response 201: `{ "data": { "eventId": "<uuid>", "recordId": "<uuid>", "message": "Registro realizado correctamente" } }`.
 
-Errores: 422 `VALIDATION_ERROR`, 404 `WORKPLACE_NOT_FOUND`, 403 `ACCOUNT_INACTIVE`, 403 `OUT_OF_WORKPLACE_AREA` (fuera del círculo + margen de tolerancia), 422 `LOW_GPS_ACCURACY` (solo si se configura como rechazo; por defecto genera revisión PENDING y acepta — ver `05`).
+Errores: 422 `VALIDATION_ERROR`, 422 `ATTENDANCE_EVENT_TOO_OLD`, 404 `WORKPLACE_NOT_FOUND`, 403 `ACCOUNT_INACTIVE`, 403 `OUT_OF_WORKPLACE_AREA` (fuera del círculo + margen de tolerancia). Precisión GPS insuficiente genera PENDING y acepta; no existe rechazo LOW_GPS_ACCURACY aprobado.
 
 ### GET /attendance/status
 Rol: EMPLOYEE. Estado actual del empleado para derivar `isWorking` (resuelve deuda mobile #13: hoy vive solo en memoria).
 Response: `{ "data": { "isWorking": true, "since": "2026-09-15T12:03:00.000Z", "workplaceId": "<uuid>" | null } }`.
 
 ### POST /timesheets
-Rol: EMPLOYEE (o ADMIN, ver sección admin). `multipart/form-data`: campos `workplaceId` (requerido), `month`, `year`, y uno o varios `files`. Máx. 20 MB/archivo, formatos permitidos.
+Rol: EMPLOYEE (o ADMIN, ver sección admin). `multipart/form-data`: campos `workplaceId` (requerido), `month`, `year`, y uno o varios `files`. Máx. 20 MiB/archivo y 10 archivos por request; lote atómico, formatos permitidos.
 Response 201: `{ "data": { "timesheetIds": ["<uuid>"], "message": "La planilla fue cargada correctamente." } }`.
 Errores: 422 `FILE_TOO_LARGE`, 422 `FILE_TYPE_NOT_ALLOWED`, 422 `VALIDATION_ERROR`.
 
@@ -149,39 +151,28 @@ Response 201: `{ "data": { "documentIds": ["<uuid>"], "message": "..." } }`. Mis
 ### GET /profile
 Rol: EMPLOYEE. Datos del propio perfil (los 11 campos que muestra `PerfilScreen`).
 Response: `{ "data": { "id", "firstName", "lastName", "dni", "cuil", "employeeId", "birthDate", "phone", "email", "address", "hireDate", "position" } }`.
-> Nota: `cuil`, `hireDate` y `position` hoy solo existen en el mock de perfil de mobile — quedaron **nullable en `User`** (ver `02-modelo-de-datos.md`) hasta confirmar quién los carga; el endpoint los devuelve `null` si no están.
+> Nota: `cuil`, `hireDate` y `position` hoy solo existen en el mock de perfil de mobile — quedaron **nullable en `User`** (ver `02-modelo-de-datos.md`) hasta que Admin los actualice (P-06); el endpoint los devuelve `null` si no están.
 
 ---
 
 ## Admin (roles ADMIN y SUPER_ADMIN; mismas vistas en MVP)
 
-### Dashboard
+### Dashboard — diseño de ruta aún por reconciliar
 `GET /dashboard/summary` →
 ```json
-{ "data": { "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsences": 0 } }
+{ "data": { "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsence": 0 } }
 ```
-Las 4 métricas de spec §47. Filtros opcionales: `?month=&year=&siteId=`.
+Las 4 métricas de spec §47. Período: mes seleccionado; la forma final de la ruta/query se mantiene pendiente en el contrato de F-009, sin inferirla del mock.
 
 ### Registros (`/records`)
-- `GET /records` — paginado (default `pageSize=50`, infinite scroll), filtros: `month`, `year`, `siteId`, `employeeId`, `workplaceId`, `clientId`, `status` (RecordStatus), `reviewStatus`, `origin`, `hasAbsence=true`. Incluye intervalos anidados por registro.
-- `GET /records/{id}` — detalle con intervalos y metadata de eventos.
-- `POST /records` — creación manual completa (marca `reviewStatus=MANUAL_LOADED`, `origin=MANUAL`).
-- `PATCH /records/{id}` — edición de horarios/intervalos/observaciones (marca `MANUAL_LOADED`).
-- `PATCH /records/{id}/review` — `{ "decision": "APPROVED" | "REJECTED", "observations"?: string }`. Un REJECTED puede volver a APPROVED tras corrección (§16).
-- **No existe DELETE** (§26).
+- `GET /records`: listado diario paginado, filtros month/year/siteId/employeeId/workplaceId/clientId/status/reviewStatus/origin/hasAbsence. La matriz usa `/records/monthly`.
+- `GET /records/{id}`: detalle bajo demanda; DTO mock de F-006 pendiente de confirmación (contrato común, sección Asistencia / Detalle y metadata bajo demanda).
+- `POST /records`: creación manual completa; `PATCH /records/{id}`: corrección por expectedVersion. DTOs canónicos en `arquitectura/contratos-api.md`, sección Asistencia / Corrección y aprobación.
+- `PATCH /records/{id}/review`: `{ expectedVersion, reviewStatus: "APPROVED" }`, devuelve detalle y versión incrementada. Conserva origen, observaciones, horarios e intervalos. No existe rechazo.
+- No se borra el registro; DELETE solo existe como operación de intervalo dentro del PATCH.
 
-### Empleados (`/users`)
-- `GET /users` — paginado; búsqueda parcial `?search=` sobre nombre/apellido/email/legajo/DNI; filtro `?status=`; orden default `lastName,asc,firstName,asc`.
-- `POST /users` — alta con TODOS los campos obligatorios (§11.1) + contraseña inicial (no revisualizable).
-- `GET /users/{id}` — detalle + accesos a sus planillas y documentos.
-- `PATCH /users/{id}` — edición de datos (admin NO puede modificar roles, §11.3).
-- `PATCH /users/{id}/status` — `{ "status": "ACTIVE" | "INACTIVE" }`.
-- Errores de unicidad: 409 `USER_ALREADY_EXISTS` / `EMPLOYEE_ID_ALREADY_EXISTS` / `DNI_ALREADY_EXISTS`.
-
-### Estructura (`/clients`, `/sites`, `/workplaces`)
-- `GET/POST /clients`, `GET/PATCH /clients/{id}`, `PATCH /clients/{id}/status`. Filtros: `search` (nombre), `status`.
-- `GET /sites` — catálogo de provincias (sin alta en MVP: seed fijo).
-- `GET/POST /workplaces`, `GET/PATCH /workplaces/{id}`, `PATCH /workplaces/{id}/status`. Payload (§34): `{ "clientId", "siteId", "name", "latitude", "longitude", "radiusMeters", "gpsAccuracyThreshold"? }`. Filtros: `search`, `clientId`, `siteId`, `status`.
+### Empleados y estructura
+DTOs, rutas, búsquedas y validaciones aprobados de empleados/clientes/lugares pertenecen a `arquitectura/contratos-api.md` (secciones Empleados y Clientes y lugares). `/users/{id}/account-status` usa `{ accountStatus }`; clients/workplaces usan PUT completo para edición. No hay DELETE de entidades.
 
 ### Planillas (`/timesheets`)
 - `GET /timesheets` — paginado; orden default `year desc, month desc, sequenceNumber desc`; filtros: `employeeId`, `clientId`, `workplaceId`, `siteId`, `month`, `year`, `status`. Columnas de listado según §39.4 (incluye `uploadedBy`).
@@ -199,3 +190,36 @@ Las 4 métricas de spec §47. Filtros opcionales: `?month=&year=&siteId=`.
 
 ### Catálogos
 `GET /catalogs` → `{ "data": { "absenceReasons": [...], "documentTypes": [...], "sites": [...] } }` con `value` + `label` en español. Fuente única de labels para ambas apps.
+
+## Dueños de contratos compartidos
+
+Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arquitectura/contratos-api.md). Este documento conserva detalle HTTP específico del backend y disponibilidad; no duplica esas interfaces.
+
+| Tema común | Referencia y detalle que queda por implementar |
+|---|---|
+| Sesión web admin | Sección Sesión web admin: WebLogin/WebSession/WebTokenResponse/WebCsrfResponse, rutas /auth/web/*, cookie vs JSON, vencimiento absoluto y relogin ante refresh ambiguo |
+| Solicitud administrativa | Sección Solicitud administrativa: diez campos, AdminAccessChallenge/Verify/Resend/Submitted; POST inicial, /verify y /resend; verificación previa a rol, contraseña existente y retención |
+| Empleados | Sección Empleados: lista/detalle/alta/PATCH y PATCH account-status; cuil/hireDate/position nullables actualizables por Admin; contraseña 12–128 sin composición obligatoria |
+| Clientes/lugares | Sección Clientes y lugares: PUT completo, estados, relaciones resueltas, queries y límites geográficos; sin dirección/Place ID persistidos |
+| Matriz mensual | Sección Asistencia / Consulta mensual: MonthlyQuery/Day/MonthlyRow/MonthlyResponse, filas completas, filtros, totales y snapshot TTL 15 min |
+| Corrección/aprobación | Sección Asistencia / Corrección y aprobación: CreateRecord/UpdateRecord/IntervalChange/ReviewRecord, expectedVersion, DELETE de intervalo y aprobación pura |
+| Detalle/eventos | Sección Asistencia / Detalle y metadata bajo demanda: RecordDetail/RecordInterval/AttendanceEventDetail aprobados solo para mocks, pendientes de confirmar por backend |
+| Archivos/métricas | Sección Archivos y métricas: límites/atomicidad/búsquedas/descarga y contadores aprobados; DTOs ampliados aún en propuesta viva |
+
+## Detalle backend y pendientes contractuales
+
+- Matriz: estrategia/costo de persistencia del snapshot y collation del orden fijo todavía sin definir. Probar febrero bisiesto, 31 días, cero filas, filtros mixtos, dos páginas y escritura concurrente. Nunca devolver intervalos/eventos por celda; pedir detalle bajo demanda. Son requisitos de ejecución, sin evidencia API real todavía.
+- Solicitud admin: POST inicial y resend → 202 challenge neutral completo; verify → submitted PENDING. Challenge 6 dígitos/10 min/5 intentos/cooldown 60 s, payload temporal máximo 72 h; decisión de un solo uso 7 días. Serialización de cancelación y reenvío/idempotencia tras respuesta perdida pendiente de especificar. No crear cuenta/cambiar rol ni revelar existencia antes de verificar. Endpoint email-only previo quedó sustituido por diseño común vigente.
+- Sesión web: proponer generación de sesión y mecanismo CSRF exacto para ratificación humana; orígenes/atributos finales de cookie/fallback/pruebas de navegador siguen pendientes. Reenvío 2FA admin y logout offline requieren precisión. No añadir campos/errores nuevos por suposición.
+- Offline: `receivedAt - occurredAt <= 24 h` inclusivo, recepción del servidor. Más de 24 h → **422 ATTENDANCE_EVENT_TOO_OLD**, retryable=false (diseño técnico del catálogo 07; aún sin implementar). Validar exactamente 24 h aceptado/+1 ms rechazado. Futuro/clock skew sin umbral aprobado. Ver 05/07; falta código y pruebas reales.
+- Detalle F-006: el DTO mock de intervalo hereda reviewStatus del registro e incluye MANUAL_LOADED, contrario al enum IntervalReviewStatus acordado. Confirmar representación antes de integrar; no ampliar enum silenciosamente. Faltan nombres/nullabilidad de metadata e historia, vínculos al borrar intervalos y usos EventOrigin.ADMIN fuera de correcciones (estas nunca generan eventos).
+- Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. Catálogos públicos/privados y permisos deben definirse sin exponer datos operativos.
+- El interceptor actual envuelve `{data: payload}` incondicionalmente: devolver ya `{data,pagination}` anida dos envelopes. Resolver al implementar paginación. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
+
+## Diferencias abiertas con archivos/métricas mock
+
+Los mocks Admin consumen `/dashboard/metrics`, pero el diseño base publica `/dashboard/summary`; ruta/query final pendiente de ratificación. El mock exige `expiresAt` en descarga, mientras el acuerdo vigente solo garantiza `downloadUrl`. DTOs completos de listado/upload, multipart, preservación de estado al reemplazar y alcance provincial están pendientes de la propuesta viva enlazada por el contrato común. No inferir aprobación de los servicios frontend. El diseño base anterior no cubre aún todas esas necesidades. URLs firmadas de 15 min se solicitan al descargar, sin persistirlas como dato estable.
+
+## Evidencia de bootstrap vigente
+
+HealthController devuelve payload plano `{status:'ok'}` y el interceptor lo envuelve; AppModule registra filtro, interceptor y ValidationPipe global. `JwtAuthGuard` todavía falla cerrado. Prisma solo User/Site y enums, sin modelos de negocio, auth ni emailVerifiedAt. `ReviewStatus`/`IntervalReviewStatus` persistidos aún conservan REJECTED; OtpPurpose no incluye LOGIN. Migraciones y módulos futuros deben alinearse al diseño, no describirse como disponibles. Ver 01/02 para racional y operación.

@@ -29,7 +29,7 @@ Revisás lo que implementaron otros agentes. Tu lealtad es con la documentación
 
 - **Nunca editás código de producto.** Solo escribís en `progress/reviewer/current.md` y en la sección "Review" del task spec.
 - **No despachás subagentes** ni lanzás agentes propios.
-- Si el task spec o las docs son ambiguos/contradictorios, no decidís vos: veredicto `cambios requeridos` con ítem "consultar al humano: <pregunta concreta>".
+- Si el task spec o las docs son ambiguos, contrastás código y decisiones vigentes. Si falta una decisión que la evidencia no resuelve, emitís `cambios requeridos` con pregunta concreta al humano.
 - Si el implementer documentó mal su trabajo en `progress/implementer/current.md` o en el task spec, eso también es un ítem de corrección.
 - **Nunca editás archivos marcados `SYNCED-FROM-TEMPLATE`.** Si un archivo común está mal o desactualizado, lo reportás como ítem de corrección para que el leader lo eleve vía `docs/changes_proposals/`.
 
@@ -39,5 +39,9 @@ Seguí `docs/convenciones/superpowers.md`: usás `verification-before-completion
 
 ## Salida
 
-1. Veredicto registrado en `progress/reviewer/current.md` y en la sección "Review" del task spec (una subsección por ronda): `aprobado` o `cambios requeridos` con lista numerada y accionable (archivo + motivo por ítem).
+1. Veredicto registrado en `progress/reviewer/current.md` y en la sección "Review" del task spec (solo veredicto y pendientes vigentes): `aprobado` o `cambios requeridos` con lista numerada y accionable (archivo + motivo por ítem).
 2. Tu último mensaje es el handoff COMPLETO para el leader, y es LIVIANO: `{ task_spec, veredicto, n_items, progress_file }`. Sin pegar diffs ni contenido de archivos.
+
+## Documentación vigente
+
+Seguí `docs/convenciones/convenciones-globales.md`: una decisión actual por tema con motivo breve, código como evidencia del estado real, sin historial. Actualizá `current.md` en lugar de appendear. El leader consolida y elimina artefactos resueltos; las propuestas comunes son temporales y se retiran tras incorporación y sync verificado.

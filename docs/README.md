@@ -1,25 +1,9 @@
-# GdeS Backend API — Documentación
+# Documentación del backend
 
-Backend del sistema GdeS: conecta la app mobile (empleados) y la web admin (RRHH/gerencia). Centraliza lógica de negocio, autenticación, almacenamiento e integraciones externas.
+Estado real: F-001 bootstrap implementada; solo GET /health está registrado, sin prefijo. Auth, recursos de negocio, integraciones y API /api/v1 siguen pendientes. Evidencia de código y limitaciones actuales en 01; detalle HTTP de diseño en 03. La documentación diferencia requisitos aprobados de implementación efectiva.
 
-> **Estado:** diseño aprobado por el humano (2026-09-15). Sin código todavía. Estos docs son la fuente de verdad para implementar; lo que no esté acá ni en `../docs/arquitectura/contratos-api.md` no se inventa: se frena y se consulta.
+Leer 01 arquitectura/stack; 02 modelo; 03 HTTP/DTOs; 04 auth; 05 asistencia; 06 integraciones; 07 convenciones/errores. Acuerdos cross-app y racional en [contrato común](arquitectura/contratos-api.md); política documental en [flujo común](convenciones/flujo-de-trabajo.md).
 
-## Ruta de lectura
+Cada tema conserva decisión vigente y racional breve, con código como evidencia de comportamiento real. No se acumulan historiales. Propuestas temporales se retiran tras consolidación y sync verificado; tasks/inbox solo mientras activos. Lo no decidido permanece etiquetado y se consulta.
 
-1. `01-arquitectura-y-stack.md` — stack, módulos NestJS, estructura del repo, cross-cutting, Docker.
-2. `02-modelo-de-datos.md` — entidades, enums, relaciones y constraints (nivel Prisma).
-3. `03-contratos-api.md` — convenciones REST y todos los endpoints con request/response/errores.
-4. `04-auth-y-seguridad.md` — flujos de autenticación, tokens, 2FA, OTP, roles y permisos.
-5. `05-asistencia-eventos-y-registros.md` — corazón del sistema: eventos → proyección a registros diarios con intervalos, validaciones GPS, idempotencia.
-6. `06-integraciones.md` — Resend (email), Meta WhatsApp Cloud API, Cloudflare R2 (storage), Google OAuth.
-7. `07-convenciones.md` — idioma, formato de respuestas/errores, paginación, timezone, límites de archivos, códigos de error.
-
-## Leyenda de estado (para cuando haya código)
-
-Igual que en mobile: **Implementado** / **Mock** / **Parcial** / **Pendiente**, declarado por doc o por sección.
-
-## Relación con el resto del sistema
-
-- Contratos entre apps (fuente de verdad de integración): `../../docs/arquitectura/contratos-api.md`.
-- Spec funcional de la web admin: `../../admin_web_app/docs/spec_definition.md` (el backend implementa todo lo que esa spec delega al servidor).
-- Estado actual de mobile y sus servicios a conectar: `../../mobile_app_gdes/docs/05-servicios-datos-y-contratos.md`.
+Pendientes: seguridad/despliegue web P-02, confirmación DTO detalle F-006, ejemplos/pruebas de API real, Docker y ratificación TTL magic link mobile (ver 03/04 y progress/leader/current.md). Backlog: feature_list.json; leader conserva propiedad de features y specs.
