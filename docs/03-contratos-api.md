@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** solo `GET /health`, sin prefijo, devuelve `{ data: { status: "ok" } }`. `src/app.module.ts` registra únicamente HealthController y `src/main.ts` no configura `/api/v1`, CORS ni cookies. Todos los endpoints siguientes están **pendientes de implementar**, incluidos auth, catálogos y uploads. Un diseño documentado no demuestra integración real. Los DTOs expresamente marcados pendientes necesitan confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth y los demás dominios siguen pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -85,7 +85,7 @@ Registro de empleado desde mobile. Request:
 Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`OtpCode.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
 
 ### GET /auth/email/verify
-Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso; TTL de diseño 24 h pendiente de ratificación, ver 04). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
+Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso; TTL ratificado 24 h, ver 04). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
 
 ### POST /auth/email-verification/resend
 Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Reenvía el email de verificación solo si la cuenta existe y sigue sin verificar.
@@ -210,11 +210,11 @@ Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arq
 
 - Matriz: estrategia/costo de persistencia del snapshot y collation del orden fijo todavía sin definir. Probar febrero bisiesto, 31 días, cero filas, filtros mixtos, dos páginas y escritura concurrente. Nunca devolver intervalos/eventos por celda; pedir detalle bajo demanda. Son requisitos de ejecución, sin evidencia API real todavía.
 - Solicitud admin: POST inicial y resend → 202 challenge neutral completo; verify → submitted PENDING. Challenge 6 dígitos/10 min/5 intentos/cooldown 60 s, payload temporal máximo 72 h; decisión de un solo uso 7 días. Serialización de cancelación y reenvío/idempotencia tras respuesta perdida pendiente de especificar. No crear cuenta/cambiar rol ni revelar existencia antes de verificar. Endpoint email-only previo quedó sustituido por diseño común vigente.
-- Sesión web: proponer generación de sesión y mecanismo CSRF exacto para ratificación humana; orígenes/atributos finales de cookie/fallback/pruebas de navegador siguen pendientes. Reenvío 2FA admin y logout offline requieren precisión. No añadir campos/errores nuevos por suposición.
+- Sesión web: base de seguridad para desarrollo/pruebas ratificada en 04 (cookie __Host, preauth/CSRF, sesión interna y Origin exacto); propuesta común pendiente de sync. Dominios de producción, fallback y pruebas de navegador siguen pendientes para despliegue/F-010. Reenvío 2FA admin y logout offline frontend requieren precisión; no se exponen rutas/campos nuevos por suposición.
 - Offline: `receivedAt - occurredAt <= 24 h` inclusivo, recepción del servidor. Más de 24 h → **422 ATTENDANCE_EVENT_TOO_OLD**, retryable=false (diseño técnico del catálogo 07; aún sin implementar). Validar exactamente 24 h aceptado/+1 ms rechazado. Futuro/clock skew sin umbral aprobado. Ver 05/07; falta código y pruebas reales.
 - Detalle F-006: el DTO mock de intervalo hereda reviewStatus del registro e incluye MANUAL_LOADED, contrario al enum IntervalReviewStatus acordado. Confirmar representación antes de integrar; no ampliar enum silenciosamente. Faltan nombres/nullabilidad de metadata e historia, vínculos al borrar intervalos y usos EventOrigin.ADMIN fuera de correcciones (estas nunca generan eventos).
 - Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. Catálogos públicos/privados y permisos deben definirse sin exponer datos operativos.
-- El interceptor actual envuelve `{data: payload}` incondicionalmente: devolver ya `{data,pagination}` anida dos envelopes. Resolver al implementar paginación. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
+- El interceptor implementado conserva `{data,pagination}` y envuelve una sola vez los payloads simples. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
 
 ## Diferencias abiertas con archivos/métricas mock
 
@@ -223,3 +223,9 @@ Los mocks Admin consumen `/dashboard/metrics`, pero el diseño base publica `/da
 ## Evidencia de bootstrap vigente
 
 HealthController devuelve payload plano `{status:'ok'}` y el interceptor lo envuelve; AppModule registra filtro, interceptor y ValidationPipe global. `JwtAuthGuard` todavía falla cerrado. Prisma solo User/Site y enums, sin modelos de negocio, auth ni emailVerifiedAt. `ReviewStatus`/`IntervalReviewStatus` persistidos aún conservan REJECTED; OtpPurpose no incluye LOGIN. Migraciones y módulos futuros deben alinearse al diseño, no describirse como disponibles. Ver 01/02 para racional y operación.
+
+## Implementación de estructura
+
+`src/modules/structure/` implementa P-07 del contrato común, sin DELETE. Búsqueda literal parcial sin acentos; filtros AND y orden name,id ASC; listado/count comparten snapshot RepeatableRead para no desalinear paginación. Unicidades normalizadas se garantizan por índices SQL incluso bajo concurrencia. PUT exige todos los editables, incluyendo gpsAccuracyThreshold explícito null. Corrección del lugar en su cliente INACTIVE se conserva; crear/reasignar a cliente INACTIVE se rechaza. Guard comprueba usuario/rol/estado vigente, no solo claims. Comandos de verificación y DB aislada en `test/README.md`.
+
+Estructura cerrada tras revisión independiente: build/lint y 8/8 pruebas HTTP/PostgreSQL con JWT reales. La regresión determinista de reasignación concurrente exige lock Workplace antes de leer clientId y luego Client; evita decisiones históricas basadas en relaciones obsoletas. Sin observaciones técnicas pendientes de F-003.

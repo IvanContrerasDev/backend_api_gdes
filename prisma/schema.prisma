@@ -33,11 +33,12 @@ model User {
 }
 
 model Site {
-  id        String   @id @default(uuid()) @db.Uuid
-  name      String   @unique
-  users     User[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String      @unique
+  users      User[]
+  workplaces Workplace[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
 }
 
 // Base enums — central definition (docs/02-modelo-de-datos.md, spec §89).
@@ -152,4 +153,32 @@ enum AdminRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+model Client {
+  id         String       @id @default(uuid()) @db.Uuid
+  name       String
+  status     EntityStatus @default(ACTIVE)
+  workplaces Workplace[]
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+}
+
+model Workplace {
+  id                   String       @id @default(uuid()) @db.Uuid
+  clientId             String       @db.Uuid
+  client               Client       @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  siteId               String       @db.Uuid
+  site                 Site         @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  name                 String
+  shapeType            ShapeType    @default(CIRCLE)
+  latitude             Float
+  longitude            Float
+  radiusMeters         Int
+  gpsAccuracyThreshold Int?
+  status               EntityStatus @default(ACTIVE)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([clientId, siteId, status])
 }

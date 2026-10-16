@@ -40,14 +40,15 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
-      "taskSpec": "docs/tasks/F-003-backend-estructura.md",
+      "estado": "done",
+      "taskSpec": null,
       "criterios": [
         "CRUD de clients y workplaces con status ACTIVE/INACTIVE (sin delete)",
         "Workplace con config geográfica (círculo: lat/lng/radiusMeters/gpsAccuracyThreshold)",
         "GET /sites (seed 6 provincias) y GET /workplaces para mobile",
         "Listados paginados con filtros y orden server-side"
-      ]
+      ],
+      "documentation": "docs/03-contratos-api.md"
     },
     {
       "id": "F-004",

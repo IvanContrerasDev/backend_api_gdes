@@ -9,6 +9,18 @@ import { Observable, map } from 'rxjs';
 @Injectable()
 export class TransformInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler): Observable<{ data: unknown }> {
-    return next.handle().pipe(map((payload: unknown) => ({ data: payload ?? null })));
+    return next.handle().pipe(
+      map((payload: unknown) => {
+        if (
+          typeof payload === 'object' &&
+          payload !== null &&
+          'data' in payload &&
+          'pagination' in payload &&
+          Array.isArray(payload.data)
+        )
+          return payload as { data: unknown };
+        return { data: payload ?? null };
+      }),
+    );
   }
 }

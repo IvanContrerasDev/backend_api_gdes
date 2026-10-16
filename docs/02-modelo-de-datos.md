@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual solo contiene User y Site, con 18 enums. No incluye emailVerifiedAt, modelos de auth ni entidades de negocio. Los enums Prisma todavía incluyen REJECTED y omiten OtpPurpose.LOGIN; la definición vigente abajo requiere futuras migraciones. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User, Site, Client y Workplace, con 18 enums. No incluye emailVerifiedAt ni modelos de auth/asistencia/archivos. Los enums Prisma todavía incluyen REJECTED y omiten OtpPurpose.LOGIN; la definición vigente abajo requiere futuras migraciones. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -64,7 +64,7 @@ Seed inicial (las 6 provincias que mobile ya tiene fijas en `constants/data.ts`)
 | name | string | required |
 | status | EntityStatus | default ACTIVE |
 
-Nunca se elimina; INACTIVE conserva historial (spec §30).
+Implementado con migración `20261016000000_structure`. Índice único PostgreSQL por expresión normaliza mayúsculas/espacios del nombre; búsqueda separada usa unaccent. Nunca se elimina; INACTIVE conserva historial (spec §30).
 
 ### Workplace
 
@@ -80,6 +80,8 @@ Nunca se elimina; INACTIVE conserva historial (spec §30).
 | radiusMeters | int | required | |
 | gpsAccuracyThreshold | int? | nullable | Umbral de precisión GPS en metros (ej. 30). Si se supera → revisión PENDING |
 | status | EntityStatus | default ACTIVE | No se elimina |
+
+Persistencia de estructura implementada: FK Client/Site, unicidad por cliente/provincia/nombre normalizado y checks de geometría en SQL. La creación/reasignación bloquea el cliente en transacción para coordinar su desactivación. Inactivar cliente no cambia status de sus lugares; el catálogo mobile excluye ambos estados inactivos.
 
 ### AttendanceEvent (append-only)
 
@@ -173,7 +175,7 @@ Sí se puede eliminar (con confirmación en UI, §40.5). No se vincula técnicam
 
 - `RefreshToken`: id, userId, tokenHash, expiresAt, rotatedAt?, revokedAt?, replacedById? — rotación con detección de reuso.
 - `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `LOGIN` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.
-- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h de diseño; ratificación de TTL pendiente), consumedAt? — magic link de verificación de email, un solo uso.
+- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h ratificadas), consumedAt? — magic link de verificación de email, un solo uso.
 - `PasswordResetToken`: id, userId, tokenHash, expiresAt, consumedAt? — un solo uso.
 - `AdminAccessRequest`: id, userId, status (`PENDING` / `APPROVED` / `REJECTED`), decisionTokenHash (links firmados del email al SuperAdmin), expiresAt (7 días), decidedAt?, decidedBy?. Una solicitud pendiente se cancela si la cuenta pasa a INACTIVE; representación persistida de cancelación pendiente de definir. Payload pre-verificación separado, retenido máximo 72 h; no crea cuenta ni modifica rol antes de OTP email.
 

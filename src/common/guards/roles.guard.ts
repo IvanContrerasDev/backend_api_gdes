@@ -1,3 +1,4 @@
+import { UserRole } from '@prisma/client';
 import { CanActivate, ExecutionContext, HttpStatus, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -5,7 +6,7 @@ import { ApiException } from '../errors/api.exception';
 import { AuthenticatedRequest } from './jwt-auth.guard';
 
 /**
- * Skeleton guard (F-001). Reads the roles declared via `@Roles(...)` and
+ * Authorization guard. Reads the roles declared via `@Roles(...)` and
  * checks them against `request.user.role` (populated by `JwtAuthGuard`).
  */
 @Injectable()
@@ -13,7 +14,7 @@ export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
+    const requiredRoles = this.reflector.getAllAndOverride<UserRole[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);

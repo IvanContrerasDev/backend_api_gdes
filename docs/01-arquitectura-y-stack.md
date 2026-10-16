@@ -2,11 +2,11 @@
 
 ## Estado real y decisiones de implementación
 
-F-001 dejó NestJS 11, Node 24 Alpine, Prisma 6 y PostgreSQL 16; solo User/Site y 18 enums existen en schema. `GET /health` está disponible sin prefijo. Módulos de dominio e integraciones de este documento son diseño aprobado pendiente. Guards son esqueletos: JWT rechaza siempre y roles todavía usan string (tipar con UserRole en F-002). `emailVerifiedAt` y OtpPurpose.LOGIN aún no existen en schema; REJECTED permanece en enums Prisma aunque el contrato de revisión ya lo retiró. Requieren migración al implementar, no reinterpretar el diseño.
+NestJS 11, Node 24 Alpine, Prisma 6 y PostgreSQL 16. El schema contiene User/Site y estructura Client/Workplace. `GET /health` conserva ruta sin prefijo; estructura funciona bajo `/api/v1` (ver 03). JWT HS256 valida firma, expiración, claims y usuario/rol/estado actual de DB; roles tipados con UserRole. Aún no existen emisión pública de tokens ni endpoints auth (F-002 pendiente), ni otros módulos de negocio. `emailVerifiedAt` y OtpPurpose.LOGIN aún no existen; REJECTED permanece en Prisma aunque el contrato de revisión lo retiró: migrar al implementar el dominio correspondiente.
 
-El cliente Prisma se copia del stage build al production para evitar generación con CLI no instalado/no pineado. ESLint prohíbe any explícito. Las env requeridas se validan al boot aun si los providers no están implementados; log es el default de EMAIL_PROVIDER/WHATSAPP_PROVIDER. El interceptor actual envuelve todo payload: un listado ya envuelto quedaría doble; resolver antes de endpoints paginados. No hay CORS/cookies ni prefijo /api/v1 configurados todavía.
+El cliente Prisma se copia del stage build al production para evitar generación con CLI no instalado/no pineado. ESLint prohíbe any explícito. Las env requeridas se validan al boot aun si los providers no están implementados; log es el default de EMAIL_PROVIDER/WHATSAPP_PROVIDER. El interceptor conserva los sobres paginados `{data,pagination}` sin anidarlos y envuelve objetos/listas simples con `{data}`. `/api/v1` configurado excepto health. CORS/cookies y auth pública todavía pendientes de F-002.
 
-Verificación pendiente: ejecutar `docker compose up --build` y health en entorno con Docker (el cierre F-001 no pudo ejecutar Docker). Build/lint, migración/seed y health tienen evidencia del cierre revisado; no se reejecutaron durante esta auditoría documental.
+Verificación de empaquetado: `docker build --target production -t gdes-backend-review:local .` completó en esta sesión; contenedor runtime conectado a PostgreSQL aislado respondió `/health` 200 y `/api/v1/clients` sin token 401. La suite HTTP/DB, build/lint y migraciones de estructura se verifican con los comandos de `test/README.md`. Compose completo con volúmenes del usuario no se ejecutó; smoke aislado no requiere modificar su base.
 
 ## Stack
 
@@ -96,4 +96,8 @@ test/
 
 ## Operación vigente
 
-Seed idempotente por upsert de Site; timestamps en User/Site por convención global. PORT default 3000, NODE_ENV opcional. npm allowScripts fija aprobaciones de Prisma a versiones del package: revisar al actualizar; prisma config en package.json deberá migrarse cuando corresponda actualizar a Prisma 7. Mensajes detallados class-validator todavía pueden incluir inglés dentro del 422: configurar por campo al implementar para cumplir español completo. Defaults: geofence 100 m, OTP 10 min; providers log son configuración anticipada, sin implementación real todavía.
+Seed idempotente por upsert de Site; timestamps en User/Site por convención global. PORT default 3000, NODE_ENV opcional. npm allowScripts fija aprobaciones de Prisma a versiones del package: revisar al actualizar; prisma config en package.json deberá migrarse cuando corresponda actualizar a Prisma 7. Los recursos de estructura validan campos/query/path con errores específicos P-07 y mensajes en español. Mensajes detallados class-validator de otros DTO futuros pueden incluir inglés dentro del 422: configurar por campo al implementar. Defaults: geofence 100 m, OTP 10 min; providers log son configuración anticipada, sin implementación real todavía.
+
+## Dependencias y límite conocido
+
+`@nestjs/platform-express` actualizado a 11.2.7 (Multer 2.4.0) para corregir alertas del parser multipart antes de implementar uploads. `npm audit --omit=dev` conserva tres avisos altos en la cadena Prisma 6.19.3 → @prisma/config → deepmerge-ts 7.1.5, por recursión con objetos circulares (GHSA-ggr8-5vv4-36mx). La configuración del CLI es local; no se observó entrada HTTP hacia esa combinación de objetos. Se mantiene Prisma 6 sin override mayor fuera de su rango probado; este alcance no equivale a una auditoría limpia. Verificar de nuevo al actualizar Prisma. El peer opcional del cliente puede instalar CLI aun con `--omit=dev`; el comentario histórico del Dockerfile no garantiza su exclusión efectiva.
