@@ -1,6 +1,6 @@
 # 06 — Integraciones externas
 
-**Estado:** diseño aprobado pendiente; no hay providers ni SDKs de integraciones implementados.
+**Estado:** interfaces EmailProvider/WhatsAppProvider y adapters log implementados para auth base en desarrollo/test. No hay llamadas reales a Resend/Meta ni storage/Google implementados; producción falla al boot mientras solo haya providers log.
 
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 

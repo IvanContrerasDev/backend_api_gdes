@@ -15,6 +15,9 @@ model User {
   firstName     String
   lastName      String
   email         String        @unique
+  emailVerifiedAt DateTime?
+  authSessions AuthSession[]
+  authChallenges AuthChallenge[]
   passwordHash  String
   phone         String
   dni           String        @unique
@@ -138,7 +141,13 @@ enum DocumentType {
   OTHER
 }
 
+enum AuthClient {
+  MOBILE
+  ADMIN
+}
+
 enum OtpPurpose {
+  LOGIN
   REGISTER
   GOOGLE_LOGIN
   ADMIN_2FA
@@ -181,4 +190,48 @@ model Workplace {
   updatedAt            DateTime     @updatedAt
 
   @@index([clientId, siteId, status])
+}
+
+model AuthSession {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client AuthClient
+  role UserRole
+  csrfSecret String
+  rememberSession Boolean @default(false)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  refreshTokens AuthRefreshToken[]
+  @@index([userId])
+}
+model AuthRefreshToken {
+  hash String @id
+  sessionId String @db.Uuid
+  session AuthSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  generation Int
+  expiresAt DateTime
+  usedAt DateTime?
+  @@unique([sessionId, generation])
+}
+model AuthChallenge {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client AuthClient
+  purpose OtpPurpose
+  codeHash String
+  preauthHash String?
+  rememberSession Boolean @default(false)
+  attempts Int @default(0)
+  expiresAt DateTime
+  sentAt DateTime @default(now())
+  consumedAt DateTime?
+  @@index([userId, client])
+}
+model AuthRateLimit {
+  key String @id
+  count Int
+  resetsAt DateTime
 }

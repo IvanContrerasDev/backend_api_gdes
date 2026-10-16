@@ -1,3 +1,3 @@
 # Estado actual — reviewer
 
-Sin tarea activa. F-003 aprobada sin observaciones abiertas. Verificación independiente: build, lint y 8/8 pruebas HTTP/PostgreSQL con guards reales; regresión de reasignación concurrente cubierta. Evidencia consolidada en docs/01 y docs/03.
+Sin tarea activa. F-002 aprobada sin observaciones abiertas: build/lint y22/22 HTTP/PostgreSQL, factores/CSRF/rotación y regresiones verificadas. Evidencia consolidada en docs/04 y test/README.md.

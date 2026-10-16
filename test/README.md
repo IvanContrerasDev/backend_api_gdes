@@ -1,6 +1,6 @@
 # Pruebas HTTP y PostgreSQL
 
-La suite arranca el proceso real `dist/main.js`, firma JWT con un secret exclusivo de pruebas y usa guards y PostgreSQL reales. No emite tokens desde endpoints ni sustituye autorización. Requiere Node 24 y PostgreSQL 16 con `unaccent` disponible.
+La suite arranca el proceso real `dist/main.js` y usa guards, sesiones y PostgreSQL reales. Auth prueba login con Argon2 y segundo factor a través de endpoints reales; los códigos se capturan del logger dev/test, sin enviar emails/WhatsApp. Estructura firma JWT solo para fixtures con usuario/sesión persistidos; no hay endpoint de bypass ni guards sustituidos. Requiere Node 24 y PostgreSQL 16 con `unaccent` disponible.
 
 Usar únicamente una base dedicada cuyo nombre sea `gdes_f003_test`. La suite rechaza otro nombre, no ejecuta resets y elimina solo fixtures de su ejecución; migración/seed son pasos explícitos. No reutilizar credenciales ni bases de producción.
 
@@ -24,3 +24,15 @@ docker stop gdes-f003-test
 `npm test` compila antes de ejecutar todos los archivos `test/*.e2e.cjs`. El contenedor no monta volúmenes, y se elimina al detenerlo. La suite requiere que el seed de seis provincias esté aplicado.
 
 La migración de estructura usa índices PostgreSQL por expresión para garantizar unicidad normalizada de clientes y lugares incluso con requests concurrentes. Esos índices se conservan en SQL porque Prisma no expresa índices por función. La búsqueda usa `unaccent` sin quitar acentos del nombre almacenado; la unicidad normaliza mayúsculas y espacios.
+
+Auth cubre OTP mobile/2FA web, CSRF/Origin, cookies y separación de transporte, límites persistidos, expiración mobile deslizante/web absoluta, logout/reuso/rotación concurrentes y la ausencia de deadlock al desactivar. La suite no certifica aún navegador, proveedores externos ni producción: el boot en NODE_ENV=production rechaza log providers hasta F-008.
+
+En sandboxes donde la ejecución elevada cambia de uid, compilar y lint sin elevación y ejecutar solo los tests con permiso de sockets; evita que dist quede con otro propietario:
+
+```bash
+npm run build
+npm run lint
+TEST_DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test node --test test/*.e2e.cjs
+```
+
+Las pruebas auth limpian counters técnicos de rate limit entre casos, por lo que esta base debe ser exclusiva de la suite y no compartirse con sesiones de desarrollo/manuales. Los demás fixtures se eliminan por identidad del run. No arrancar dos ejecuciones de la suite simultáneas en la misma DB/puertos.

@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth y los demás dominios siguen pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Los demás dominios siguen pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -119,6 +119,8 @@ Rol: EMPLOYEE. Lista de workplaces **activos** para el selector de marcación.
 Response: `{ "data": [ { "id", "name", "siteId", "siteName", "clientName", "latitude", "longitude", "radiusMeters" } ] }` (sin paginación: catálogo completo, decenas de lugares).
 
 ### POST /attendance/events
+**Contrato aún no implementado y en adecuación:** online usa hora del servidor; offline aporta hora original y hora actual del teléfono al sincronizar, adelantada como máximo dos minutos al servidor (05). Procesamiento por recepción; DTO final por materializar.
+
 Rol: EMPLOYEE. Registra una marcación. **Idempotente** por `clientRequestId`: un reintento devuelve 200 con el resultado original (ver `05-asistencia-eventos-y-registros.md`).
 
 Request:
@@ -211,7 +213,7 @@ Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arq
 - Matriz: estrategia/costo de persistencia del snapshot y collation del orden fijo todavía sin definir. Probar febrero bisiesto, 31 días, cero filas, filtros mixtos, dos páginas y escritura concurrente. Nunca devolver intervalos/eventos por celda; pedir detalle bajo demanda. Son requisitos de ejecución, sin evidencia API real todavía.
 - Solicitud admin: POST inicial y resend → 202 challenge neutral completo; verify → submitted PENDING. Challenge 6 dígitos/10 min/5 intentos/cooldown 60 s, payload temporal máximo 72 h; decisión de un solo uso 7 días. Serialización de cancelación y reenvío/idempotencia tras respuesta perdida pendiente de especificar. No crear cuenta/cambiar rol ni revelar existencia antes de verificar. Endpoint email-only previo quedó sustituido por diseño común vigente.
 - Sesión web: base de seguridad para desarrollo/pruebas ratificada en 04 (cookie __Host, preauth/CSRF, sesión interna y Origin exacto); propuesta común pendiente de sync. Dominios de producción, fallback y pruebas de navegador siguen pendientes para despliegue/F-010. Reenvío 2FA admin y logout offline frontend requieren precisión; no se exponen rutas/campos nuevos por suposición.
-- Offline: `receivedAt - occurredAt <= 24 h` inclusivo, recepción del servidor. Más de 24 h → **422 ATTENDANCE_EVENT_TOO_OLD**, retryable=false (diseño técnico del catálogo 07; aún sin implementar). Validar exactamente 24 h aceptado/+1 ms rechazado. Futuro/clock skew sin umbral aprobado. Ver 05/07; falta código y pruebas reales.
+- Asistencia: online usa hora del servidor; offline conserva hora original y valida hora actual del teléfono al sincronizar (adelanto máximo dos minutos). Se conserva ventana offline24h y procesamiento por recepción. DTO final y casos fuera de orden en 05; no hay API implementada aún.
 - Detalle F-006: el DTO mock de intervalo hereda reviewStatus del registro e incluye MANUAL_LOADED, contrario al enum IntervalReviewStatus acordado. Confirmar representación antes de integrar; no ampliar enum silenciosamente. Faltan nombres/nullabilidad de metadata e historia, vínculos al borrar intervalos y usos EventOrigin.ADMIN fuera de correcciones (estas nunca generan eventos).
 - Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. Catálogos públicos/privados y permisos deben definirse sin exponer datos operativos.
 - El interceptor implementado conserva `{data,pagination}` y envuelve una sola vez los payloads simples. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
@@ -229,3 +231,9 @@ HealthController devuelve payload plano `{status:'ok'}` y el interceptor lo envu
 `src/modules/structure/` implementa P-07 del contrato común, sin DELETE. Búsqueda literal parcial sin acentos; filtros AND y orden name,id ASC; listado/count comparten snapshot RepeatableRead para no desalinear paginación. Unicidades normalizadas se garantizan por índices SQL incluso bajo concurrencia. PUT exige todos los editables, incluyendo gpsAccuracyThreshold explícito null. Corrección del lugar en su cliente INACTIVE se conserva; crear/reasignar a cliente INACTIVE se rechaza. Guard comprueba usuario/rol/estado vigente, no solo claims. Comandos de verificación y DB aislada en `test/README.md`.
 
 Estructura cerrada tras revisión independiente: build/lint y 8/8 pruebas HTTP/PostgreSQL con JWT reales. La regresión determinista de reasignación concurrente exige lock Workplace antes de leer clientId y luego Client; evita decisiones históricas basadas en relaciones obsoletas. Sin observaciones técnicas pendientes de F-003.
+
+## Implementación auth base
+
+Las rutas de password-login y sesiones de 04 están registradas bajo `/api/v1/auth`; OTP/2FA obligatorio, sin bypass. Registro, Google, magic link, password-recovery/reset y admin-access-request siguen pendientes F-008. `/auth/otp/verify` acepta solo LOGIN en esta etapa; no simula REGISTER/GOOGLE_LOGIN.
+
+Web exige bootstrap GET csrf y Origin/X-CSRF-Token para login/2FA y mutaciones, refresh solo cookie, access solo JSON; GET csrf después de autenticar obtiene token de sesión renovado. Login ADMIN con sesión activa requiere logout previo. Mobile refresh responde únicamente tokens. Logout mobile revoca sesión del access; web revoca cadena de cookie. Errores de parser JSON 400 se traducen al español, sin alterar ApiException de dominio. Auth incluye no-store aun en errores. Verificación HTTP/DB y entorno en test/README.md; no equivale a pruebas de navegador ni proveedores reales.

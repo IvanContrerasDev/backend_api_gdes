@@ -10,6 +10,8 @@ import { ApiException } from '../errors/api.exception';
 export interface AuthenticatedUser {
   id: string;
   role: UserRole;
+  sessionId?: string;
+  client?: string;
 }
 export interface AuthenticatedRequest extends Request {
   user?: AuthenticatedUser;
@@ -54,7 +56,7 @@ export class JwtAuthGuard implements CanActivate {
       throw invalid();
     const user = await this.prisma.user.findUnique({
       where: { id: claims.sub },
-      select: { id: true, role: true, accountStatus: true },
+      select: { id: true, role: true, accountStatus: true, emailVerifiedAt: true },
     });
     if (!user || user.role !== claims.role) throw invalid();
     if (user.accountStatus !== AccountStatus.ACTIVE)
@@ -63,7 +65,20 @@ export class JwtAuthGuard implements CanActivate {
         'ACCOUNT_INACTIVE',
         'La cuenta está desactivada',
       );
-    request.user = { id: user.id, role: user.role };
+    if (typeof claims.sid !== 'string' || !isUUID(claims.sid)) throw invalid();
+    const session = await this.prisma.authSession.findUnique({ where: { id: claims.sid } });
+    if (
+      !session ||
+      session.userId !== user.id ||
+      session.role !== user.role ||
+      session.revokedAt ||
+      session.expiresAt.getTime() <= Date.now() ||
+      (session.client === 'MOBILE'
+        ? user.role !== 'EMPLOYEE' || !user.emailVerifiedAt
+        : !['ADMIN', 'SUPER_ADMIN'].includes(user.role))
+    )
+      throw invalid();
+    request.user = { id: user.id, role: user.role, sessionId: session.id, client: session.client };
     return true;
   }
 }

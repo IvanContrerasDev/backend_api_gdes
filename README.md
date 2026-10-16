@@ -1,6 +1,6 @@
 # Backend API GdeS
 
-NestJS + Prisma/PostgreSQL. Bootstrap y estructura organizacional implementados: clientes, lugares y provincias bajo `/api/v1`, protegidos por JWT y roles. `GET /health` sigue sin prefijo. Auth pública y otros dominios siguen pendientes.
+NestJS + Prisma/PostgreSQL. Bootstrap y estructura organizacional implementados: clientes, lugares y provincias bajo `/api/v1`, protegidos por JWT y roles. `GET /health` sigue sin prefijo. Auth base implementada con segundo factor obligatorio, sesiones/refresh y CSRF web; providers de desarrollo, sin envíos reales. Producción rechaza log providers hasta F-008; otros dominios siguen pendientes.
 
 Documentación y ruta de lectura: [docs/README.md](docs/README.md). Contratos comunes: [docs/arquitectura/contratos-api.md](docs/arquitectura/contratos-api.md). Política documental: [docs/convenciones/flujo-de-trabajo.md](docs/convenciones/flujo-de-trabajo.md): temas vigentes con racional breve, sin historial; código como evidencia real, requisitos pendientes explícitos. Propuestas se retiran tras consolidación y sync verificado; tasks/inbox solo mientras activos.
 

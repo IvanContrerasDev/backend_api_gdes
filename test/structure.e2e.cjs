@@ -35,6 +35,7 @@ function token(user, overrides = {}, secret = env.JWT_ACCESS_SECRET, algorithm =
       sub: user.id,
       role: user.role,
       type: 'access',
+      sid: user.sessionId,
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 1800,
       ...overrides,
@@ -87,6 +88,7 @@ before(async () => {
         employeeId: `${role}-${suffix}`,
         dni: `${role}-${suffix}`,
         passwordHash: 'unused',
+        emailVerifiedAt: new Date(),
         phone: '1234567890',
         address: 'Test',
         birthDate: new Date('1990-01-01'),
@@ -94,6 +96,16 @@ before(async () => {
         role,
       },
     });
+    const session = await db.authSession.create({
+      data: {
+        userId: u.id,
+        role: u.role,
+        client: role === 'EMPLOYEE' ? 'MOBILE' : 'ADMIN',
+        csrfSecret: randomUUID(),
+        expiresAt: new Date(Date.now() + 604800000),
+      },
+    });
+    u.sessionId = session.id;
     users.push(u.id);
     if (role === 'ADMIN') admin = u;
     else if (role === 'EMPLOYEE') employee = u;
@@ -145,12 +157,13 @@ test('JWT rejects forged, expired, wrong type/algorithm/claims and current inact
   } finally {
     await db.user.update({ where: { id: admin.id }, data: { accountStatus: 'ACTIVE' } });
   }
-  await error('/api/v1/sites', 'ROLE_NOT_ALLOWED', 403, { jwt: token(pending) });
+  await error('/api/v1/sites', 'INVALID_TOKEN', 401, { jwt: token(pending) });
   await db.user.update({ where: { id: admin.id }, data: { role: 'EMPLOYEE' } });
   try {
     await error('/api/v1/sites', 'INVALID_TOKEN', 401);
   } finally {
     await db.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+    await db.authSession.update({ where: { id: admin.sessionId }, data: { role: 'ADMIN' } });
   }
 });
 test('clients CRUD, normalization, accent search, pagination, concurrent uniqueness and no DELETE', async () => {
@@ -345,8 +358,9 @@ test('invalid filters, identifiers, payloads and pagination return domain 4xx', 
     body: { name: 'x'.repeat(121) },
   });
   await error(`/api/v1/workplaces/${randomUUID()}`, 'WORKPLACE_NOT_FOUND', 404);
-  await error('/api/v1/workplaces', 'ROLE_NOT_ALLOWED', 403, { jwt: token(pending) });
+  await error('/api/v1/workplaces', 'INVALID_TOKEN', 401, { jwt: token(pending) });
   await db.user.update({ where: { id: admin.id }, data: { role: 'SUPER_ADMIN' } });
+  await db.authSession.update({ where: { id: admin.sessionId }, data: { role: 'SUPER_ADMIN' } });
   try {
     assert.equal(
       (await request('/api/v1/sites', { jwt: token({ ...admin, role: 'SUPER_ADMIN' }) })).status,
@@ -354,6 +368,7 @@ test('invalid filters, identifiers, payloads and pagination return domain 4xx', 
     );
   } finally {
     await db.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
+    await db.authSession.update({ where: { id: admin.sessionId }, data: { role: 'ADMIN' } });
   }
 });
 

@@ -1,10 +1,10 @@
 # 05 — Asistencia: eventos y registros
 
-**Estado:** diseño aprobado pendiente; no hay implementación de ingesta, proyección ni registros. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
+**Estado:** diseño pendiente de implementación; no hay ingesta, proyección ni registros. Decisión humana vigente: hora efectiva del servidor y orden de recepción; offline con occurredAt y clientSentAt conforme decisión humana; DTO y casos fuera de orden aún por concretar. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
 
 El corazón del sistema. Reconcilia los dos modelos que relevó `contratos-api.md` (divergencia 2, resuelta por el humano):
 
-- **Mobile emite eventos atómicos**: el empleado solo registra que ingresó o que se fue (`entrada`/`salida`/`ausencia` con un timestamp cada uno).
+- **Mobile emite eventos atómicos**: el empleado solo registra que ingresó o que se fue (`entrada`/`salida`/`ausencia`). El servidor asigna la hora online; el flujo offline conserva la hora original y aporta hora actual del teléfono para validar el reloj al sincronizar.
 - **Admin ve un registro diario** por `(userId, workplaceId, date)` compuesto por **intervalos** (spec §8/§12–§17). La mayoría de los registros tienen un solo intervalo (entró y se fue); los turnos cortados son la excepción.
 
 El backend guarda **ambos**: eventos append-only como fuente de verdad auditable, y el registro diario con intervalos como proyección derivada.
@@ -15,8 +15,8 @@ El backend guarda **ambos**: eventos append-only como fuente de verdad auditable
 
 1. **Idempotencia**: si ya existe un `AttendanceEvent` con ese `clientRequestId`, devolver 200 con el resultado original (`eventId`, `recordId`, `message`). Nunca duplicar. Esto soporta la cola offline de mobile (`offlineRegisterService` reintenta hasta éxito, sin límite).
 2. **Validaciones** de negocio (ver abajo).
-3. **Persistir el evento** (`AttendanceEvent`, inmutable) con `receivedAt` del servidor.
-4. **Proyección**: localizar o crear el `AttendanceRecord` de `(userId, workplaceId, date)` donde `date` se calcula convirtiendo `occurredAt` a **GMT-3** (zona única del sistema; un evento a las 23:30 UTC del 15/09 cuenta para el 15/09 GMT-3).
+3. **Persistir el evento** (`AttendanceEvent`, inmutable): `receivedAt` siempre del servidor; `occurredAt` online del servidor y offline de la marcación original tras validar ventana y reloj de sincronización.
+4. **Proyección**: localizar o crear el `AttendanceRecord` de `(userId, workplaceId, date)` donde `date` se calcula convirtiendo la hora efectiva (`occurredAt`, con procedencia online/offline) a **GMT-3** (zona única del sistema; un evento a las 23:30 UTC del 15/09 cuenta para el 15/09 GMT-3).
 5. Aplicar el **algoritmo de construcción de intervalos** (spec §23):
    - `CHECK_IN` → siempre crea un intervalo `WORK` nuevo con `startTime`, `intervalStatus=OPEN`, `entryEventId=evento`.
    - `CHECK_OUT` → completa el **último intervalo abierto** (`endTime`, `intervalStatus=CLOSED`, `exitEventId=evento`). Si no hay abierto → crea un intervalo solo con salida, `SEMI_CLOSED`.
@@ -24,10 +24,13 @@ El backend guarda **ambos**: eventos append-only como fuente de verdad auditable
 6. **Recalcular el registro**: `totalWorkMinutes` (suma de intervalos `WORK` cerrados; ABSENCE no suma, §14), `recordStatus` (todo cerrado → `COMPLETE`; algún `OPEN`/`SEMI_CLOSED` → `INCOMPLETE`, §15), `origin` (`MANUAL` si al menos un intervalo es manual, §17).
 7. Responder 201 con `{ eventId, recordId, message }`.
 
-## Marcaciones tardías y timestamps
+## Hora del servidor, recepción y cola offline
 
-- Ventana inclusiva ratificada: receivedAt del servidor menos occurredAt <= 24 h. Más antiguos → 422 ATTENDANCE_EVENT_TOO_OLD, retryable=false (código materializado para este contrato). La frontera exacta de 24 h se acepta; 24 h + 1 ms se rechaza. Especificación, todavía sin pruebas ejecutables de backend.
-- occurredAt es hora del dispositivo; receivedAt y locationTimestamp se conservan para auditoría. Política para timestamps futuros/clock skew pendiente; el umbral previo de 5 min no está ratificado y no se impone.
+Decisión humana vigente: online usa hora efectiva del servidor. En el flujo offline el request aporta hora de marcación (`occurredAt`) y hora actual del teléfono al sincronizar (`clientSentAt`); esta última no puede adelantarse más de dos minutos respecto de `receivedAt`, asignado por servidor. Esta excepción permite conservar la hora de marcación offline. Mantener ambas procedencias explícitas; no presentar una hora de cliente como certificada por servidor.
+
+Procesar en orden de recepción, sin reconstruir intervalos ordenándolos por hora cliente. Se conserva la ventana offline aprobada de hasta 24 h; la aclaración humana no la retiró. No se exige conexión para toda marcación. La comprobación del reloj al sincronizar limita el adelanto actual, pero no demuestra por sí sola cuándo ocurrió la marcación original.
+
+Pendientes técnicos al preparar F-005: DTO exacto para distinguir online/offline y timestamp del fix GPS; comportamiento ante reloj actual atrasado (no imponer diferencia absoluta de dos minutos por suposición); salida offline anterior a una entrada abierta recibida antes, sin producir minutos negativos ni reconstruir históricos. Rechazo de adelanto actual >2 min usa INVALID_TIMESTAMP, con frontera inclusiva a probar. No publicar integración hasta materializar estos puntos.
 
 ## Validaciones GPS (spec §16/§33.3/§47)
 

@@ -1,12 +1,4 @@
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUrl,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Max, Min } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 
@@ -122,10 +114,11 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     const details = errors
       .map((error) => `${error.property}: ${Object.values(error.constraints ?? {}).join(', ')}`)
       .join('; ');
-    throw new Error(
-      `Invalid environment configuration. Fix the following variables: ${details}`,
-    );
+    throw new Error(`Invalid environment configuration. Fix the following variables: ${details}`);
   }
 
+  if (validated.JWT_ACCESS_SECRET === validated.JWT_REFRESH_SECRET) {
+    throw new Error('JWT access and refresh secrets must be distinct');
+  }
   return validated;
 }

@@ -1,6 +1,6 @@
 # Documentación del backend
 
-Estado real: bootstrap y estructura F-003 implementados (clientes, lugares y provincias en /api/v1 con JWT y roles), /health sin prefijo. Auth pública y otros dominios siguen pendientes. Evidencia de código, verificación y limitaciones actuales en 01; detalle HTTP en 03. La documentación distingue requisitos aprobados de implementación efectiva.
+Estado real: bootstrap y estructura F-003 implementados (clientes, lugares y provincias en /api/v1 con JWT y roles), /health sin prefijo. Auth base implementada con OTP/2FA, sesiones/refresh/CSRF; producción pendiente de providers reales F-008. Otros dominios siguen pendientes. Evidencia de código, verificación y limitaciones actuales en 01; detalle HTTP en 03. La documentación distingue requisitos aprobados de implementación efectiva.
 
 Leer 01 arquitectura/stack; 02 modelo; 03 HTTP/DTOs; 04 auth; 05 asistencia; 06 integraciones; 07 convenciones/errores. Acuerdos cross-app y racional en [contrato común](arquitectura/contratos-api.md); política documental en [flujo común](convenciones/flujo-de-trabajo.md).
 

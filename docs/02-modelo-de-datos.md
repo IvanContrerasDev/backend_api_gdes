@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual contiene User, Site, Client y Workplace, con 18 enums. No incluye emailVerifiedAt ni modelos de auth/asistencia/archivos. Los enums Prisma todavía incluyen REJECTED y omiten OtpPurpose.LOGIN; la definición vigente abajo requiere futuras migraciones. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). No incluye asistencia/archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; los enums Prisma todavía incluyen REJECTED, cuya eliminación corresponde al dominio de asistencia. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -93,7 +93,7 @@ Evento atómico emitido por mobile. Las correcciones manuales de Admin no genera
 | userId | uuid | FK → User | |
 | workplaceId | uuid | FK → Workplace | |
 | type | AttendanceEventType | required | `CHECK_IN` / `CHECK_OUT` / `ABSENCE` |
-| occurredAt | timestamp | required | Hora del evento según el dispositivo (ISO 8601 UTC) |
+| occurredAt | timestamp | required | Hora efectiva: servidor online; original del cliente offline validada al sincronizar (05) |
 | receivedAt | timestamp | required | Hora de recepción en el servidor |
 | latitude | float | required | |
 | longitude | float | required | |
@@ -172,6 +172,9 @@ No se elimina (§39.5). Reemplazar el archivo borra el anterior del bucket perma
 Sí se puede eliminar (con confirmación en UI, §40.5). No se vincula técnicamente a ausencias/registros (§38.2).
 
 ### Tablas de auth
+
+**Implementación actual F-002:** AuthSession (userId, cliente MOBILE/ADMIN, rol, secreto CSRF, rememberSession, vencimiento, revocación, createdAt); AuthRefreshToken (hash PK, sessionId, generación única por sesión, expiresAt, usedAt); AuthChallenge (userId, cliente/propósito, hash OTP, vínculo preauth, rememberSession, attempts, expiresAt, sentAt, consumedAt); AuthRateLimit (key HMAC, contador, resetsAt). Estas tablas técnicas usan fechas explícitas del ciclo de autenticación; no se presupone updatedAt genérico. El esquema soporta solo LOGIN/ADMIN_2FA actualmente. Los siguientes nombres/campos de otros flujos siguen siendo diseño futuro, no tablas ya disponibles:
+
 
 - `RefreshToken`: id, userId, tokenHash, expiresAt, rotatedAt?, revokedAt?, replacedById? — rotación con detección de reuso.
 - `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `LOGIN` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.

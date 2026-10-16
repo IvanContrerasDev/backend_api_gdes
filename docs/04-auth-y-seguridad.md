@@ -1,13 +1,13 @@
 # 04 — Autenticación y seguridad
 
-**Estado:** diseño aprobado pendiente; no existen endpoints auth ni validación JWT funcional. Detalle HTTP vigente en 03; acuerdos comunes en arquitectura/contratos-api.md.
+**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; producción bloqueada hasta implementar providers reales F-008. Google, registro, magic link, recuperación y solicitud admin siguen pendientes. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
 
 ## Tokens
 
 - **Access token**: JWT, 30 minutos. Claims: `sub` (userId), `role`, `type: "access"`.
 - **Refresh token**: opaco (no JWT), 7 días, **rotación en cada uso** (spec Parte 2): cada `POST /auth/refresh` emite uno nuevo e invalida el anterior.
 - **Detección de reuso**: si se presenta un refresh token ya rotado/revocado, se revoca toda la cadena del usuario y se responde 401 `REFRESH_TOKEN_REUSED`.
-- "Recordar sesión": no extiende nada por encima de 7 días; la sesión vive hasta el límite del refresh.
+- Mobile: cada refresh rotado vence siete días después de su emisión; la sesión acompaña ese vencimiento deslizante. Web: límite absoluto inicial de siete días, que ninguna rotación ni "recordar sesión" extiende.
 - Secrets distintos para access y refresh (`JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`).
 - Mobile migra el almacenamiento a SecureStore/Keychain (hoy no guarda token — cambio pendiente en su app).
 
@@ -16,6 +16,7 @@
 - Hash con **Argon2**.
 - Política aprobada P-06 compartida: 12–128 caracteres, admite espacios y Unicode, sin reglas obligatorias de mayúsculas/símbolos; backend rechaza comunes/comprometidas. La validación actual de mobile difiere y deberá migrar, sin trasladarla como contrato vigente.
 - Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email — `emailVerifiedAt` se setea en el alta (spec §11.1).
+- Comprobación ratificada para esta etapa: lista local de contraseñas comunes/comprometidas conocidas, sin consulta externa a HIBP. La lista local debe versionarse con sus pruebas; no garantiza cubrir todas las filtraciones. Mantenerla actualizada es una limitación operativa explícita.
 - La contraseña nunca se puede revisualizar (§11.1).
 
 ## Flujos
@@ -57,13 +58,17 @@
 
 Flujo completo y DTOs en 03 (Solicitud admin): diez campos, challenge email antes de crear cuenta/cambiar rol, contraseña actual para existentes y perfil conservado. OTP 10 min/5 intentos/cooldown 60 s, payload temporal 72 h. Tras verificar se crea solicitud PENDING y se envían correos; decisión de un solo uso 7 días, GET solo muestra UI y POST confirma. Cuenta que pasa a INACTIVE cancela solicitud. No fusionar identidades ni degradar administradores.
 
-### Seguridad web pendiente de ratificación
+### Seguridad web aprobada para desarrollo y pruebas
 
-Transporte ya aprobado: refresh HttpOnly, access memoria, rememberSession, sessionExpiresAt absoluto máximo 7 días, relogin ante refresh perdido/ambiguo. Orígenes, atributos definitivos de cookie, generación de sesión, CSRF exacto y fallback de navegador están pendientes: ver 03 y contrato común. Dos proyectos Vercel no garantizan cookies cross-site; validar navegadores reales en F-010. No proponer campos como si ya estuvieran aprobados.
+Base ratificada por el humano: refresh en `__Host-gdes-refresh`, Secure, HttpOnly, Path=/, sin Domain; frontend y API same-site con CORS de origen explícito. Access en memoria, refresh rotativo, rememberSession y límite absoluto inicial de siete días. Sin recordar: cookie de sesión; al recordar: Max-Age hasta el vencimiento absoluto. SameSite=Lax es la configuración técnica para ese despliegue same-site. No se habilita fallback cross-site por suposición.
 
-### Parámetro por confirmar
+CSRF ligado a sesión previa al login, renovado al autenticar. Implementación prevista: secreto aleatorio de preauth en cookie HttpOnly `__Host-gdes-preauth` con los mismos atributos de transporte y token derivado por HMAC servido en `/auth/web/csrf`; header `X-CSRF-Token` y Origin exacto para login ADMIN, verify 2FA y mutaciones web. La sesión autenticada tiene identificador aleatorio persistido; el token CSRF se deriva de esa generación, no del refresh para permitir rotación coordinada. No se añade ningún campo al DTO público. Error de CSRF/origen mal formado usa 400 BAD_REQUEST; cookie/sesión inválida usa 401 INVALID_TOKEN. Los secretos no se devuelven en JSON.
 
-TTL de 24 h para magic link de verificación mobile figura en el diseño original, pero leader lo dejó pendiente de confirmación humana; no confundirlo con el límite offline ratificado de 24 h ni con decisión admin de 7 días.
+Respuesta perdida/ambigua de refresh exige relogin. Logout online revoca la cadena e invalida cookies con los mismos atributos. Logout offline sigue siendo coordinación pendiente del frontend, sin garantía de revocación del servidor hasta recibir la petición. Orígenes concretos, dominios de producción y validación en navegadores reales quedan pendientes para despliegue/F-010. La base aprobada habilita desarrollo y pruebas locales, no certifica integración de producción.
+
+### Verificación de email mobile
+
+El humano ratificó TTL de 24 horas para el enlace de verificación de email. Token firmado de un solo uso, persistido únicamente como hash; no confundir con recuperación (1 h) ni decisión administrativa (7 días).
 
 ## Autorización
 
@@ -82,3 +87,17 @@ Notas:
 ## HTTPS y transporte
 
 Todo el tráfico por HTTPS en producción. Los uploads multipart van por el mismo canal TLS al backend.
+
+## Implementación auth base
+
+`src/modules/auth/` persiste AuthChallenge, AuthSession, AuthRefreshToken y AuthRateLimit. Los refresh opacos solo se guardan como HMAC; access HS256 exige `sub`, `role`, `type`, expiración y `sid` de sesión vigente. Guard verifica usuario activo, rol vigente, email verificado MOBILE y sesión no revocada/vencida. ADMIN no hereda la restricción de verificación de email de mobile.
+
+OTP seis dígitos/10 min/cinco intentos, un solo uso y cooldown mobile60 s. Intentos y revocaciones se confirman antes de responder error. Challenge ADMIN ligado a preauth original; GET csrf autenticado deriva de la sesión, preauth se borra al autenticar. No se permite un segundo login ADMIN mientras conserva cookie de sesión activa: logout previo. CSRF/Origin mal formado BAD_REQUEST; sin agregar campos DTO. Auth siempre no-store, incluidos errores; CORS con ADMIN_FRONTEND_URL exacto y credenciales. Cookies conservan Secure aun en desarrollo: probar navegador bajo HTTPS o localhost compatible; no hay fallback inseguro.
+
+Rotación toma User → AuthSession; logout solo AuthSession; verificación Challenge → User → sesión nueva. Ese orden evita deadlock con desactivación User → sesiones (F-004). Reuso revoca la cadena de esa sesión de forma durable. Las rutas mobile no aceptan refresh ADMIN ni lo devuelven en JSON; logout mobile revoca únicamente la sesión identificada por el access.
+
+Rate limit persistido y atómico (ventana10 min): login por IP100 y por identifier/cliente10; challenges por usuario/cliente10; verify IP200 y usuario/cliente20; resend IP50 y usuario5, además del máximo de cinco intentos por challenge. Reenviar o pedir challenge nuevo no reinicia el límite global de verificación. Valores técnicos para desarrollo, revisar con tráfico real antes del despliegue.
+
+Secrets access/refresh distintos obligatorios al boot. Providers log redactan destinatarios y muestran solo códigos OTP deliberados de desarrollo; no envían mensajes reales. Las suites HTTP/PostgreSQL usan fixtures dedicadas, no credenciales de seed productivo. Validación reproducible en test/README.md; pruebas de navegador/producción son F-010 y no se sustituyen por tests HTTP.
+
+Cierre F-002 con revisión independiente aprobada, build/lint y 22/22 pruebas HTTP/PostgreSQL (auth14 + estructura8), sin observaciones técnicas abiertas. Regresión de expiración tras lock User comprueba OTP_EXPIRED sin consumo ni sesión, y JSON malformado conserva BAD_REQUEST español/no-store.

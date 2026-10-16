@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ApiException } from '../errors/api.exception';
 
 interface ErrorBody {
   error: {
@@ -70,9 +71,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const body = this.buildBody(exception, status);
 
@@ -93,7 +92,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? 'Error interno del servidor'
         : (DEFAULT_MESSAGE_BY_STATUS[status] ?? 'Error inesperado');
 
-    if (exception instanceof HttpException) {
+    // Framework/parser 400 details contain technical English and may echo input.
+    // Only explicitly defined domain errors carry a user-facing Spanish message.
+    const exposeDetails = status !== HttpStatus.BAD_REQUEST || exception instanceof ApiException;
+    if (exception instanceof HttpException && exposeDetails) {
       const response = exception.getResponse();
       if (typeof response === 'object' && response !== null) {
         const payload = response as Record<string, unknown>;

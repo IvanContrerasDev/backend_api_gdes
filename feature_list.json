@@ -25,14 +25,15 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
-      "taskSpec": "docs/tasks/F-002-backend-auth-base.md",
+      "estado": "done",
+      "taskSpec": null,
       "criterios": [
         "POST /auth/login acepta email o legajo, valida rol por client (MOBILE solo EMPLOYEE); tokens solo tras OTP mobile o 2FA web según contrato final",
         "Access token 30 min + refresh 7 días con rotación y detección de reuso",
         "POST /auth/refresh, POST /auth/logout operativos",
         "Errores con formato { error: { code, message, retryable } } y códigos del catálogo"
-      ]
+      ],
+      "documentation": "docs/04-auth-y-seguridad.md"
     },
     {
       "id": "F-003",

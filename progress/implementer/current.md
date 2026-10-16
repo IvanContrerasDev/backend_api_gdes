@@ -1,3 +1,3 @@
 # Estado actual — implementer
 
-Sin tarea activa. Estructura implementada y aprobada; evidencia vigente y comandos en docs/01, docs/03 y test/README.md. Sin correcciones abiertas.
+Sin tarea activa. F-002 aprobada; verificación y comandos en docs/04 y test/README.md. Orden de locks para integración User→Session; verify Challenge→User→nuevaSession. Sin correcciones abiertas.

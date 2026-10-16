@@ -34,7 +34,7 @@
 | 409 | `REQUEST_ALREADY_DECIDED` | false | Solicitud admin ya resuelta |
 | 410 | `OTP_EXPIRED` / `TOKEN_EXPIRED` | false | Código/token vencido |
 | 422 | `VALIDATION_ERROR` | false | Error de validación de campos |
-| 422 | `INVALID_TIMESTAMP` | false | Reservado; política de futuro/clock skew pendiente de ratificación |
+| 422 | `INVALID_TIMESTAMP` | false | Adelanto de reloj actual del teléfono >2 min al sincronizar offline; DTO final pendiente (05) |
 | 422 | `FILE_TOO_LARGE` | false | Archivo > 20 MiB |
 | 422 | `FILE_TYPE_NOT_ALLOWED` | false | Extensión/contenido no permitido |
 | 429 | `TOO_MANY_ATTEMPTS` | true | Rate limit / intentos de OTP |
