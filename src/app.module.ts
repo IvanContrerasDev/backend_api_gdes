@@ -1,3 +1,4 @@
+import { AttendanceModule } from './modules/attendance/attendance.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { StructureModule } from './modules/structure/structure.module';
@@ -21,6 +22,7 @@ import { HealthController } from './health/health.controller';
     StructureModule,
     AuthModule,
     UsersModule,
+    AttendanceModule,
   ],
   controllers: [HealthController],
   providers: [

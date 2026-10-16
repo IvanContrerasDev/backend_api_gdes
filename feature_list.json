@@ -73,15 +73,16 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
-      "taskSpec": "docs/tasks/F-005-backend-attendance.md",
+      "estado": "done",
+      "taskSpec": null,
       "criterios": [
         "POST /attendance/events persiste AttendanceEvent y proyecta record/intervals en una transacción",
         "Idempotencia por clientRequestId (reintentos sin duplicar)",
         "Algoritmo de intervalos §23 (OPEN/CLOSED/SEMI_CLOSED) y recálculo de recordStatus/totalWorkMinutes",
         "Validaciones GPS con margen de tolerancia configurable → reviewStatus PENDING",
         "GET /attendance/status deriva isWorking"
-      ]
+      ],
+      "documentation": "docs/05-asistencia-eventos-y-registros.md"
     },
     {
       "id": "F-006",

@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; no incluye asistencia/archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; los enums Prisma todavía incluyen REJECTED, cuya eliminación corresponde al dominio de asistencia. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; incluye AttendanceEvent/AttendanceRecord/Interval; no incluye archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; ReviewStatus/IntervalReviewStatus sin REJECTED; AdminRequestStatus lo conserva. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -94,9 +94,11 @@ Evento atómico emitido por mobile. Las correcciones manuales de Admin no genera
 | id | uuid | PK | |
 | userId | uuid | FK → User | |
 | workplaceId | uuid | FK → Workplace | |
+| recordId | uuid | FK → AttendanceRecord, required | Vínculo durable aun sin intervalo |
 | type | AttendanceEventType | required | `CHECK_IN` / `CHECK_OUT` / `ABSENCE` |
 | occurredAt | timestamp | required | Hora efectiva: servidor online; original del cliente offline validada al sincronizar (05) |
 | receivedAt | timestamp | required | Hora de recepción en el servidor |
+| clientSentAt | timestamp? | nullable | Hora actual del teléfono al sincronizar; null online |
 | latitude | float | required | |
 | longitude | float | required | |
 | accuracy | float | required | Metros de precisión del fix GPS |
@@ -105,7 +107,8 @@ Evento atómico emitido por mobile. Las correcciones manuales de Admin no genera
 | absenceReason | AbsenceReason? | nullable | Solo si `type = ABSENCE` |
 | clientRequestId | string | unique | Clave de idempotencia generada por el cliente (cola offline) |
 | origin | EventOrigin | required | `MOBILE` / `ADMIN` |
-| deviceInfo | json? | nullable | Metadata del dispositivo (spec §24) |
+| deviceInfo | json? | nullable | Metadata original del dispositivo (spec §24) |
+| responseMessage | string | required | Respuesta original para replay idempotente |
 
 ### AttendanceRecord (registro diario)
 
@@ -114,7 +117,9 @@ Evento atómico emitido por mobile. Las correcciones manuales de Admin no genera
 | id | uuid | PK | |
 | userId | uuid | FK → User | |
 | workplaceId | uuid | FK → Workplace | |
+| clientId/siteId | uuid | FK → Client/Site | Snapshot del lugar al crear |
 | date | date | required | Calculada en GMT-3 desde el evento |
+| version | int | default 1 | Incrementa con cada evento/corrección/aprobación |
 | totalWorkMinutes | int | default 0 | Suma de intervalos `WORK` cerrados; ABSENCE no suma (spec §14) |
 | recordStatus | RecordStatus | required | `COMPLETE` / `INCOMPLETE` — deriva de los intervalos (§15) |
 | reviewStatus | ReviewStatus | default NONE | Ver enums (§16) |
@@ -130,6 +135,7 @@ Prohibido eliminar registros (§26).
 |---|---|---|---|
 | id | uuid | PK | |
 | recordId | uuid | FK → AttendanceRecord | |
+| sequence | int | unique(recordId,sequence) | Orden de creación por recepción, independiente de version |
 | type | IntervalType | required | `WORK` / `ABSENCE` (§19) |
 | startTime | timestamp? | nullable | Opcional en `ABSENCE` (§19) |
 | endTime | timestamp? | nullable | Opcional en `ABSENCE` |
@@ -140,6 +146,7 @@ Prohibido eliminar registros (§26).
 | observations | string? | nullable | |
 | entryEventId | uuid? | FK → AttendanceEvent | Metadata del evento de entrada (§24) |
 | exitEventId | uuid? | FK → AttendanceEvent | |
+| absenceEventId | uuid? | FK → AttendanceEvent | |
 
 ### Timesheet (planilla)
 
@@ -223,4 +230,6 @@ Los catálogos son **fijos en código, no configurables** (spec Parte 5). El bac
 
 ## Concurrencia y validación de diseño
 
-AttendanceRecord requiere version para expectedVersion y unicidad (userId, workplaceId, date). Aprobación y corrección incrementan versión; no se borran registros. Solo WORK CLOSED suma totalWorkMinutes; ver tabla de completitud en 05. radiusMeters entero 10–10000, gpsAccuracyThreshold null o entero 1–1000. Dirección/Place ID de Google no se persisten en Workplace. Validaciones/unicidades y DTOs públicos de P-06/P-07 en 03; no exponer passwordHash ni fileKey. Refresh web requiere expiración absoluta; esquema de generación/CSRF pendiente de ratificar.
+AttendanceRecord requiere version para expectedVersion y unicidad (userId, workplaceId, date). Aprobación y corrección incrementan versión; no se borran registros. Solo WORK CLOSED suma totalWorkMinutes; ver tabla de completitud en 05. radiusMeters entero 10–10000, gpsAccuracyThreshold null o entero 1–1000. Dirección/Place ID de Google no se persisten en Workplace. Validaciones/unicidades y DTOs públicos de P-06/P-07 en 03; no exponer passwordHash ni fileKey. Refresh web implementa expiración absoluta y CSRF ratificado en04.
+
+Persistencia de asistencia implementada en20261016030000_attendance, aprobación independiente completada. Event.recordId conserva auditoría; los vínculos entry/exit/absence viven en Interval para permitir futuras correcciones sin reescribir eventos. Workplace con registros congela clientId/siteId bajo lock; snapshots no se reescriben.

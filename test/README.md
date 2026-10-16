@@ -36,3 +36,5 @@ TEST_DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test
 ```
 
 Las pruebas auth limpian counters técnicos de rate limit entre casos, por lo que esta base debe ser exclusiva de la suite y no compartirse con sesiones de desarrollo/manuales. Los demás fixtures se eliminan por identidad del run. No arrancar dos ejecuciones de la suite simultáneas en la misma DB/puertos.
+
+Asistencia cubre online con hora servidor, offline con occurredAt/clientSentAt y fronteras inclusivas24h/2min, recepción fuera de orden, GPS/tolerancia, medianoche GMT-3, proyección de intervalos, floor sobre suma total, replay/propiedad/colisiones y atomicidad con fallo tardío. También prueba congelación de clientId/siteId de lugares con registros y ambas carreras con primera ingesta, incluyendo UUID equivalentes en mayúsculas. Vínculo event.recordId durable y secuencia de intervalos independiente de versión preparan correcciones admin.

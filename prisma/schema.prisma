@@ -16,6 +16,8 @@ model User {
   lastName      String
   email         String        @unique
   emailVerifiedAt DateTime?
+  attendanceEvents AttendanceEvent[]
+  attendanceRecords AttendanceRecord[]
   authSessions AuthSession[]
   authChallenges AuthChallenge[]
   passwordHash  String
@@ -39,6 +41,7 @@ model Site {
   id         String      @id @default(uuid()) @db.Uuid
   name       String      @unique
   users      User[]
+  attendanceRecords AttendanceRecord[]
   workplaces Workplace[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -73,7 +76,6 @@ enum ReviewStatus {
   NONE
   PENDING
   APPROVED
-  REJECTED
   MANUAL_LOADED
 }
 
@@ -92,7 +94,6 @@ enum IntervalReviewStatus {
   NONE
   PENDING
   APPROVED
-  REJECTED
 }
 
 enum RecordOrigin {
@@ -169,6 +170,7 @@ model Client {
   name       String
   status     EntityStatus @default(ACTIVE)
   workplaces Workplace[]
+  attendanceRecords AttendanceRecord[]
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 }
@@ -188,6 +190,9 @@ model Workplace {
   status               EntityStatus @default(ACTIVE)
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
+
+  attendanceEvents AttendanceEvent[]
+  attendanceRecords AttendanceRecord[]
 
   @@index([clientId, siteId, status])
 }
@@ -234,4 +239,88 @@ model AuthRateLimit {
   key String @id
   count Int
   resetsAt DateTime
+}
+
+// Receipt/projection order is serialized by User. Interval.sequence records that
+// order explicitly; client timestamps and database timestamp ties never reorder it.
+model AttendanceEvent {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workplaceId String @db.Uuid
+  workplace Workplace @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  recordId String @db.Uuid
+  record AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  type AttendanceEventType
+  occurredAt DateTime
+  receivedAt DateTime
+  clientSentAt DateTime?
+  latitude Float
+  longitude Float
+  accuracy Float
+  locationTimestamp DateTime
+  observation String?
+  absenceReason AbsenceReason?
+  clientRequestId String @unique
+  origin EventOrigin
+  deviceInfo Json?
+  responseMessage String
+  entries Interval[] @relation("EntryEvent")
+  exits Interval[] @relation("ExitEvent")
+  absences Interval[] @relation("AbsenceEvent")
+  createdAt DateTime @default(now())
+  // Append-only: no updatedAt; no write API other than insertion.
+  @@index([userId, receivedAt])
+  @@index([recordId])
+}
+model AttendanceRecord {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workplaceId String @db.Uuid
+  workplace Workplace @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  // Historical snapshots, never updated when Workplace is reassigned.
+  clientId String @db.Uuid
+  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  siteId String @db.Uuid
+  site Site @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  date DateTime @db.Date
+  totalWorkMinutes Int @default(0)
+  recordStatus RecordStatus
+  reviewStatus ReviewStatus @default(NONE)
+  origin RecordOrigin
+  observations String?
+  version Int @default(1)
+  events AttendanceEvent[]
+  intervals Interval[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, workplaceId, date])
+  @@index([userId, date])
+}
+model Interval {
+  id String @id @default(uuid()) @db.Uuid
+  recordId String @db.Uuid
+  record AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Restrict)
+  sequence Int
+  type IntervalType
+  startTime DateTime?
+  endTime DateTime?
+  intervalStatus IntervalStatus
+  reviewStatus IntervalReviewStatus @default(NONE)
+  origin RecordOrigin
+  absenceReason AbsenceReason?
+  observations String?
+  entryEventId String? @db.Uuid
+  entryEvent AttendanceEvent? @relation("EntryEvent", fields: [entryEventId], references: [id], onDelete: Restrict)
+  exitEventId String? @db.Uuid
+  exitEvent AttendanceEvent? @relation("ExitEvent", fields: [exitEventId], references: [id], onDelete: Restrict)
+  absenceEventId String? @db.Uuid
+  absenceEvent AttendanceEvent? @relation("AbsenceEvent", fields: [absenceEventId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([recordId, sequence])
+  @@index([entryEventId])
+  @@index([exitEventId])
+  @@index([absenceEventId])
 }

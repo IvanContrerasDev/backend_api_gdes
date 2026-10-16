@@ -1,6 +1,6 @@
 # 05 — Asistencia: eventos y registros
 
-**Estado:** diseño pendiente de implementación; no hay ingesta, proyección ni registros. Decisión humana vigente: hora efectiva del servidor y orden de recepción; offline con occurredAt y clientSentAt conforme decisión humana; DTO y casos fuera de orden aún por concretar. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
+**Estado:** ingesta/proyección/status implementados y aprobados tras revisión independiente. Endpoints admin y matriz mensual pendientes F-006. Decisión humana vigente: hora efectiva del servidor online y orden de recepción; offline con occurredAt y clientSentAt conforme reglas siguientes. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
 
 El corazón del sistema. Reconcilia los dos modelos que relevó `contratos-api.md` (divergencia 2, resuelta por el humano):
 
@@ -30,7 +30,7 @@ Decisión humana vigente: online usa hora efectiva del servidor. En el flujo off
 
 Procesar en orden de recepción, sin reconstruir intervalos ordenándolos por hora cliente. Se conserva la ventana offline aprobada de hasta 24 h; la aclaración humana no la retiró. No se exige conexión para toda marcación. La comprobación del reloj al sincronizar limita el adelanto actual, pero no demuestra por sí sola cuándo ocurrió la marcación original.
 
-Preparación F-005: clientSentAt presente distingue offline y exige occurredAt; sin clientSentAt se asigna hora online del servidor. No imponer límite simétrico al reloj atrasado. El último WORK OPEN es el último creado por recepción/proyección, no el de mayor hora original. locationTimestamp se conserva como metadata del fix, sin convertirlo en hora efectiva. Rechazo del adelanto actual >2 min usa INVALID_TIMESTAMP; frontera inclusiva a probar. Pendiente humano: salida offline anterior a la entrada abierta recibida antes (conservar SEMI_CLOSED/PENDING o rechazar), sin minutos negativos ni reconstrucción. No publicar integración hasta implementar y cerrar ese caso.
+Contrato F-005: clientSentAt presente distingue offline y exige occurredAt; sin clientSentAt se asigna hora online del servidor. No imponer límite simétrico al reloj atrasado. El último WORK OPEN es el último creado por recepción/proyección, no el de mayor hora original. locationTimestamp se conserva como metadata del fix, sin convertirlo en hora efectiva. Rechazo del adelanto actual >2 min usa INVALID_TIMESTAMP; frontera inclusiva a probar. Caso ratificado: salida anterior al startTime del último OPEN creado por recepción conserva un nuevo SEMI_CLOSED y registro PENDING; mantiene entrada OPEN, sin minutos negativos ni reconstrucción. No se busca otro abierto para cambiar el criterio de último recibido. Implementación F-005 lista, aprobación independiente completada.
 
 ## Validaciones GPS (spec §16/§33.3/§47)
 
@@ -76,6 +76,10 @@ Al ingerir, sobre el workplace del evento:
 
 Total = suma WORK CLOSED, sin campo de horas de ausencia. Entrada 09:00, entrada 11:00, salida 12:00, salida 18:00 cierra 11–12 y 09–18: 600 min aun con solapamientos. No reescribir históricos; nuevas cargas manuales rechazan solapamientos, WORK incompletos y registros sin intervalos. Motivo de ausencia opcional siempre.
 
-Medianoche GMT-3: entrada 2026-09-18T02:50:00Z y salida 2026-09-18T03:10:00Z producen dos registros (17/09 OPEN; 18/09 SEMI_CLOSED), INCOMPLETE, 0 min cerrados. No cerrar ni fusionar automáticamente. Estos ejemplos son especificación; falta evidencia de ejecución real, incluyendo eventos offline fuera de orden y concurrencia.
+Medianoche GMT-3: entrada 2026-09-18T02:50:00Z y salida 2026-09-18T03:10:00Z producen dos registros (17/09 OPEN; 18/09 SEMI_CLOSED), INCOMPLETE, 0 min cerrados. No cerrar ni fusionar automáticamente. Estos casos tienen cobertura HTTP/PostgreSQL real en test/attendance.e2e.cjs, incluidos offline fuera de orden, fronteras exactas de tiempo, concurrencia e ingesta atómica.
 
 Revisión individual de intervalos fuera del incremento actual: no inferir ruta. Correcciones históricas para entidades inactivas permitidas, con revalidación; operaciones nuevas bloqueadas, lectura conservada.
+
+Regla humana de estructura: un workplace con registros no puede cambiar cliente ni provincia. El bloqueo se verifica bajo lock Workplace para no competir con la primera ingesta; snapshots client/site del record conservan contexto. Esto mantiene una única fila mensual empleado–lugar. Detalle admin ratificado: intervalos sin MANUAL_LOADED; evento conserva recordId y puede tener intervalId null tras eliminar su intervalo (F-006 pendiente).
+
+Reglas manuales F-006 ratificadas (aún sin implementar): separar turnos por día GMT-3; cada tramo pertenece a su registro diario y puede terminar exactamente a00:00 del día siguiente. Validar solapamientos de todos los intervalos con horarios, WORK y ABSENCE. Una corrección conserva o reduce intersecciones históricas, pero no las amplía ni crea otras; comparar por pares y rango de intersección. Tramos contiguos no se solapan. No invalidar históricos no modificados.

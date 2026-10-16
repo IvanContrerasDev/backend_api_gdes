@@ -12,7 +12,8 @@ export function fail(
 }
 export function uuid(value: unknown, code: string): string {
   if (typeof value !== 'string' || !isUUID(value)) fail(code, 'El identificador no es válido');
-  return value;
+  // PostgreSQL UUID identity is case-insensitive; compare one canonical form.
+  return value.toLowerCase();
 }
 export function object(value: unknown, code: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(code);

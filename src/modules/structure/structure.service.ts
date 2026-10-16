@@ -63,13 +63,28 @@ export class StructureService {
         // Client status changes lock only Client, so this order has no reverse path.
         const existing = id
           ? (
-              await tx.$queryRaw<{ clientId: string }[]>(
-                Prisma.sql`SELECT "clientId" FROM "Workplace" WHERE id = ${id}::uuid FOR UPDATE`,
+              await tx.$queryRaw<{ clientId: string; siteId: string }[]>(
+                Prisma.sql`SELECT "clientId", "siteId" FROM "Workplace" WHERE id = ${id}::uuid FOR UPDATE`,
               )
             )[0]
           : null;
         if (id && !existing)
           fail('WORKPLACE_NOT_FOUND', 'El lugar de trabajo no existe', HttpStatus.NOT_FOUND);
+        // Attendance ingestion holds this same Workplace lock before creating
+        // its first record. Check after locking so both race orders preserve the
+        // historical employee/workplace context used by the monthly projection.
+        if (
+          existing &&
+          (existing.clientId !== input.clientId || existing.siteId !== input.siteId) &&
+          (await tx.attendanceRecord.findFirst({
+            where: { workplaceId: id },
+            select: { id: true },
+          }))
+        )
+          fail(
+            'INVALID_WORKPLACE_DATA',
+            'No se puede cambiar el cliente o la provincia de un lugar con registros de asistencia',
+          );
         // Lock the destination client so deactivation cannot race eligibility.
 
         const clients = await tx.$queryRaw<{ status: EntityStatus }[]>(
