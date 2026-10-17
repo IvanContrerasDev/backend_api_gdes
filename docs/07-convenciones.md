@@ -8,7 +8,7 @@
 
 ## Respuestas y errores
 
-- Éxito: `{ data }` / `{ data: [], pagination }` (ver `03-contratos-api.md`).
+- Éxito: `{ data }` / `{ data: [], pagination }`; matriz agrega `meta` en el mismo nivel (ver `03-contratos-api.md`).
 - Error uniforme: `{ error: { code, message, retryable } }`.
 - `retryable: true` solo con HTTP 429/500/502/503/504 (spec §52/§69–71). El frontend no debe depender únicamente de `retryable`.
 
@@ -34,14 +34,14 @@
 | 409 | `REQUEST_ALREADY_DECIDED` | false | Solicitud admin ya resuelta |
 | 410 | `OTP_EXPIRED` / `TOKEN_EXPIRED` | false | Código/token vencido |
 | 422 | `VALIDATION_ERROR` | false | Error de validación de campos |
-| 422 | `INVALID_TIMESTAMP` | false | Adelanto de reloj actual del teléfono >2 min al sincronizar offline; DTO final pendiente (05) |
+| 422 | `INVALID_TIMESTAMP` | false | Timestamp offline inválido o adelanto de clientSentAt >2min; contrato implementado en05 |
 | 422 | `FILE_TOO_LARGE` | false | Archivo > 20 MiB |
 | 422 | `FILE_TYPE_NOT_ALLOWED` | false | Extensión/contenido no permitido |
 | 429 | `TOO_MANY_ATTEMPTS` | true | Rate limit / intentos de OTP |
 | 429 | `OTP_RESEND_COOLDOWN` | true | Reenvío de OTP antes de 60 s |
 | 500 | `INTERNAL_ERROR` | true | Error no controlado |
 
-Los códigos siguientes son diseño pendiente de implementar, salvo fallbacks generales del filtro actual. No se infiere que ApiException valide catálogo (acepta cualquier string). Nuevos códigos requieren documentar el contrato común y este catálogo.
+El catálogo combina códigos implementados y previstos: disponibilidad por dominio en03. Asistencia/estructura/users y registros admin tienen implementación; solicitud admin sigue pendiente F-008. ApiException acepta strings y no valida pertenencia al catálogo. Nuevos códigos requieren documentar el contrato común y este catálogo.
 
 | HTTP | code | retryable | Uso |
 |---|---|---|---|
@@ -80,7 +80,7 @@ Registro mobile conserva sus códigos de unicidad originales; no sustituirlos po
 
 ## Soft-delete
 
-Nada del dominio se borra físicamente de la base: users se desactiva con `accountStatus`; clients/workplaces con `status`, registros y planillas no se eliminan jamás. Única excepción: `Document` (legajo) sí se elimina (spec §40.5), y los archivos reemplazados/eliminados sí se borran del bucket.
+Nada del dominio se borra físicamente de la base: users se desactiva con `accountStatus`; clients/workplaces con `status`, registros y planillas no se eliminan jamás. Excepciones de dominio: `Document` (legajo) se elimina (spec §40.5); intervalos se pueden eliminar dentro de la corrección admin, conservando registro y eventos originales. Los archivos reemplazados/eliminados se borran del bucket. Tablas técnicas pueden limpiar datos vencidos conforme política, por ejemplo MonthlySnapshot; no implica borrar historia de asistencia.
 
 ## Commits y PRs del subrepo
 

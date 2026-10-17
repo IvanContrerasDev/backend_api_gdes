@@ -90,14 +90,15 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
         "GET /records/monthly por filas completas, snapshot TTL 15 min, filtros y totales del contrato común",
         "POST /records y PATCH /records/{id} con expectedVersion en corrección, ADD/UPDATE/DELETE de intervalos y al menos uno; MANUAL_LOADED/origin MANUAL",
         "PATCH /records/{id}/review con expectedVersion y APPROVED; aprobación pura sin cambiar origen/intervalos/eventos",
         "No existe DELETE de registros"
-      ]
+      ],
+      "documentation": "docs/03-contratos-api.md"
     },
     {
       "id": "F-007",

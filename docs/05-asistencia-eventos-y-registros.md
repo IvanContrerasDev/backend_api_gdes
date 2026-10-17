@@ -1,6 +1,6 @@
 # 05 — Asistencia: eventos y registros
 
-**Estado:** ingesta/proyección/status implementados y aprobados tras revisión independiente. Endpoints admin y matriz mensual pendientes F-006. Decisión humana vigente: hora efectiva del servidor online y orden de recepción; offline con occurredAt y clientSentAt conforme reglas siguientes. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
+**Estado:** ingesta/proyección/status implementados y aprobados tras revisión independiente. Endpoints admin y matriz mensual F-006 implementados y aprobados tras revisión independiente. Decisión humana vigente: hora efectiva del servidor online y orden de recepción; offline con occurredAt y clientSentAt conforme reglas siguientes. Contrato común en arquitectura/contratos-api.md; HTTP y DTOs en 03.
 
 El corazón del sistema. Reconcilia los dos modelos que relevó `contratos-api.md` (divergencia 2, resuelta por el humano):
 
@@ -80,6 +80,8 @@ Medianoche GMT-3: entrada 2026-09-18T02:50:00Z y salida 2026-09-18T03:10:00Z pro
 
 Revisión individual de intervalos fuera del incremento actual: no inferir ruta. Correcciones históricas para entidades inactivas permitidas, con revalidación; operaciones nuevas bloqueadas, lectura conservada.
 
-Regla humana de estructura: un workplace con registros no puede cambiar cliente ni provincia. El bloqueo se verifica bajo lock Workplace para no competir con la primera ingesta; snapshots client/site del record conservan contexto. Esto mantiene una única fila mensual empleado–lugar. Detalle admin ratificado: intervalos sin MANUAL_LOADED; evento conserva recordId y puede tener intervalId null tras eliminar su intervalo (F-006 pendiente).
+Regla humana de estructura: un workplace con registros no puede cambiar cliente ni provincia. El bloqueo se verifica bajo lock Workplace para no competir con la primera ingesta; snapshots client/site del record conservan contexto. Esto mantiene una única fila mensual empleado–lugar. Detalle admin ratificado: intervalos sin MANUAL_LOADED; evento conserva recordId y puede tener intervalId null tras eliminar su intervalo (F-006 implementada y aprobada).
 
-Reglas manuales F-006 ratificadas (aún sin implementar): separar turnos por día GMT-3; cada tramo pertenece a su registro diario y puede terminar exactamente a00:00 del día siguiente. Validar solapamientos de todos los intervalos con horarios, WORK y ABSENCE. Una corrección conserva o reduce intersecciones históricas, pero no las amplía ni crea otras; comparar por pares y rango de intersección. Tramos contiguos no se solapan. No invalidar históricos no modificados.
+Reglas manuales F-006 ratificadas (implementadas y aprobadas): separar turnos por día GMT-3; cada tramo pertenece a su registro diario y puede terminar exactamente a00:00 del día siguiente. Validar solapamientos de todos los intervalos con horarios, WORK y ABSENCE. Una corrección conserva o reduce intersecciones históricas, pero no las amplía ni crea otras; comparar por pares y rango de intersección. Tramos contiguos no se solapan. No invalidar históricos no modificados.
+
+Transición efectiva vigente al ingresar nuevos eventos: si no hay señal GPS/fuera de orden, conserva reviewStatus previo, incluso APPROVED/MANUAL_LOADED; origin MANUAL se conserva. GPS/fuera de orden marca PENDING. Replay no muta nada. Propuesta adicional de volver PENDING tras cualquier evento nuevo a un registro APPROVED consultada al humano, sin aprobación aún; no se implementa por inferencia ni condiciona el alcance de corrección/matriz ya ratificado.

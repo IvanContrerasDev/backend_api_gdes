@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin, archivos, dashboard y auth avanzada pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; archivos, dashboard y auth avanzada pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -168,7 +168,7 @@ Las 4 métricas de spec §47. Período: mes seleccionado; la forma final de la r
 
 ### Registros (`/records`)
 - `GET /records`: listado diario de diseño, aún sin DTO final ni ruta implementada. La matriz F-006 usa `/records/monthly`.
-- `GET /records/{id}`: detalle bajo demanda; DTO del contrato común con ajustes ratificados al final de este documento; implementación F-006 pendiente.
+- `GET /records/{id}`: detalle bajo demanda; DTO del contrato común con ajustes ratificados al final de este documento; implementación F-006 implementada y aprobada.
 - `POST /records`: creación manual completa; `PATCH /records/{id}`: corrección por expectedVersion. DTOs canónicos en `arquitectura/contratos-api.md`, sección Asistencia / Corrección y aprobación.
 - `PATCH /records/{id}/review`: `{ expectedVersion, reviewStatus: "APPROVED" }`, devuelve detalle y versión incrementada. Conserva origen, observaciones, horarios e intervalos. No existe rechazo.
 - No se borra el registro; DELETE solo existe como operación de intervalo dentro del PATCH.
@@ -205,16 +205,16 @@ Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arq
 | Clientes/lugares | Sección Clientes y lugares: PUT completo, estados, relaciones resueltas, queries y límites geográficos; sin dirección/Place ID persistidos |
 | Matriz mensual | Sección Asistencia / Consulta mensual: MonthlyQuery/Day/MonthlyRow/MonthlyResponse, filas completas, filtros, totales y snapshot TTL 15 min |
 | Corrección/aprobación | Sección Asistencia / Corrección y aprobación: CreateRecord/UpdateRecord/IntervalChange/ReviewRecord, expectedVersion, DELETE de intervalo y aprobación pura |
-| Detalle/eventos | Sección Asistencia / Detalle y metadata bajo demanda: RecordDetail/RecordInterval/AttendanceEventDetail con ajustes ratificados al final de03; implementación F-006 pendiente |
+| Detalle/eventos | Sección Asistencia / Detalle y metadata bajo demanda: RecordDetail/RecordInterval/AttendanceEventDetail con ajustes ratificados al final de03; implementación F-006 aprobada |
 | Archivos/métricas | Sección Archivos y métricas: límites/atomicidad/búsquedas/descarga y contadores aprobados; DTOs ampliados aún en propuesta viva |
 
 ## Detalle backend y pendientes contractuales
 
-- Matriz: estrategia F-006 definida: snapshot persistido PostgreSQL, payload inmutable en RepeatableRead, TTL absoluto15min; orden de texto PostgreSQL C, luego UUID empleado/lugar. Contexto usuario/filtros/orden/pageSize. Probar febrero bisiesto, 31 días, cero filas, filtros mixtos, dos páginas y escritura concurrente. Nunca devolver intervalos/eventos por celda; pedir detalle bajo demanda. Son requisitos de ejecución, sin evidencia API real todavía.
+- Matriz: estrategia F-006 definida: snapshot persistido PostgreSQL, payload inmutable en RepeatableRead, TTL absoluto15min; orden de texto PostgreSQL C, luego UUID empleado/lugar. Contexto usuario/filtros/orden/pageSize. Probar febrero bisiesto, 31 días, cero filas, filtros mixtos, dos páginas y escritura concurrente. Nunca devolver intervalos/eventos por celda; pedir detalle bajo demanda. Estos casos están verificados por HTTP/PostgreSQL real en test/records.e2e.cjs.
 - Solicitud admin: POST inicial y resend → 202 challenge neutral completo; verify → submitted PENDING. Challenge 6 dígitos/10 min/5 intentos/cooldown 60 s, payload temporal máximo 72 h; decisión de un solo uso 7 días. Serialización de cancelación y reenvío/idempotencia tras respuesta perdida pendiente de especificar. No crear cuenta/cambiar rol ni revelar existencia antes de verificar. Endpoint email-only previo quedó sustituido por diseño común vigente.
 - Sesión web: base de seguridad para desarrollo/pruebas ratificada en 04 (cookie __Host, preauth/CSRF, sesión interna y Origin exacto); propuesta común pendiente de sync. Dominios de producción, fallback y pruebas de navegador siguen pendientes para despliegue/F-010. Reenvío 2FA admin y logout offline frontend requieren precisión; no se exponen rutas/campos nuevos por suposición.
-- Asistencia: online usa hora del servidor; offline conserva hora original y valida hora actual del teléfono al sincronizar (adelanto máximo dos minutos). Se conserva ventana offline24h y procesamiento por recepción. DTO y casos fuera de orden en05; API implementada aprobados tras revisión independiente.
-- Detalle F-006: ajustes ratificados al final de este documento; implementación pendiente. Metadata conserva contenido original; usos EventOrigin.ADMIN fuera de correcciones no definidos.
+- Asistencia: online usa hora del servidor; offline conserva hora original y valida hora actual del teléfono al sincronizar (adelanto máximo dos minutos). Se conserva ventana offline24h y procesamiento por recepción. DTO y casos fuera de orden en05; API implementada y aprobada tras revisión independiente.
+- Detalle F-006: ajustes ratificados e implementados al final de este documento. Metadata conserva contenido original; usos EventOrigin.ADMIN fuera de correcciones no definidos.
 - Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. Catálogos públicos/privados y permisos deben definirse sin exponer datos operativos.
 - El interceptor implementado conserva `{data,pagination}` y envuelve una sola vez los payloads simples. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
 
@@ -246,14 +246,24 @@ Alta ACTIVE, contraseña Argon2 y emailVerifiedAt al crear. Política únicament
 
 Desactivar bloquea User y revoca todas sus sesiones en una transacción, compatible con refresh y OTP; reactivar no restaura sesiones. Cierre F-004 aprobado por reviewer independiente: build/lint y 38/38 pruebas HTTP/PostgreSQL (auth14, estructura8, users16), sin observaciones abiertas. Comandos y entorno en test/README.md.
 
-## Decisiones vigentes para registros admin (F-006 pendiente)
-
-Detalle de intervalos usa IntervalReviewStatus NONE/PENDING/APPROVED, nunca MANUAL_LOADED; corrección marca origin MANUAL y el registro MANUAL_LOADED. Evento conserva recordId si se elimina su intervalo; AttendanceEventDetail.intervalId puede ser null. Estos ajustes del DTO mock fueron ratificados por el humano; propuesta común pendiente de sync.
-
-No dividir filas mensuales por contexto histórico: el humano eligió impedir cambiar clientId/siteId de workplaces con registros. Guardar snapshots al crear registros para auditoría; fila mensual sigue empleado–lugar. Validación bajo lock Workplace evita carrera con el primer registro, error400 INVALID_WORKPLACE_DATA. F-005 incorpora ese guard de integración; cerrado y aprobado.
-
 ## Implementación de asistencia
 
 F-005 cerrada tras reviewer independiente y verificación final: build/lint y64/64 pruebas HTTP/PostgreSQL (asistencia26,auth14,estructura8,users16), sin pendientes técnicos. AttendanceModule registra ingesta/status y valida sesiones reales. Transacción User→Workplace→Client persiste evento/proyección; replay conserva respuesta y protege identidad. Detalle temporal/GPS/proyección en05. Cinco migraciones y seed verificadas desde DB nueva dedicada.
 
 Guard histórico de estructura impide cambiar cliente/provincia tras primer registro con ambas carreras cubiertas. UUID se canonicalizan tras validación, por lo que mayúsculas no simulan reasignaciones ni bloquean la edición del mismo cliente inactivo.
+
+## Registros admin (F-006 implementada y aprobada)
+
+Detalle de intervalos usa IntervalReviewStatus NONE/PENDING/APPROVED, nunca MANUAL_LOADED; corrección marca origin MANUAL y el registro MANUAL_LOADED. Evento conserva recordId si se elimina su intervalo; AttendanceEventDetail.intervalId puede ser null. Estos ajustes del DTO mock fueron ratificados por el humano; propuesta común pendiente de sync.
+
+No dividir filas mensuales por contexto histórico: el humano eligió impedir cambiar clientId/siteId de workplaces con registros. Guardar snapshots al crear registros para auditoría; fila mensual sigue empleado–lugar. Validación bajo lock Workplace evita carrera con el primer registro, error400 INVALID_WORKPLACE_DATA. F-005 incorpora ese guard de integración; cerrado y aprobado.
+
+Detalle F-006: GET /records/monthly, GET /records/{id}, GET /attendance-events/{id}, POST /records, PATCH /records/{id}, PATCH /records/{id}/review exclusivamente ADMIN/SUPER_ADMIN. No diario GET /records ni revisión individual de intervalo; no DELETE de registros. CreateRecord.observations e IntervalInput completo son obligatorios con nullables explícitos; omisión conserva solo campos opcionales de UpdateRecord e intervalos no mencionados. Reglas manuales de día/solapamiento en05.
+
+Metadata de evento: escalares de deviceInfo de primer nivel se exponen salvo nombres reservados; metadata.clientRequestId proviene de DB y metadata.clientSentAt es ISO|null de DB. deviceInfoJson conserva JSON.stringify del original cuando hay contenido anidado o colisión de nombre reservado. Reservados: id,userId,workplaceId,recordId,intervalId,occurredAt,receivedAt,createdAt,updatedAt,origin,locationTimestamp,clientRequestId,clientSentAt,deviceInfoJson,__proto__,constructor,prototype. Location.accuracyMeters mapea accuracy; capturedAt conserva locationTimestamp original. No altera el evento persistido ni certifica datos del teléfono.
+
+Snapshot mensual: propietario/filtros/orden/pageSize canónicos, TTL absoluto15min; page1 sin token crea, siguientes requieren token. Payload completo inmutable persiste en DB y sobrevive reinicios; páginas posteriores no reconsultan dominio. Captura coherente en RepeatableRead; limpieza de snapshots vencidos fuera de esa transacción evita conflictos entre consultas concurrentes. Orden PostgreSQL COLLATE C para apellido/nombre/lugar y desempate UUID empleado/lugar. Totales de todas filas seleccionadas, filtros de estado/revisión/origen/ausencia coinciden en el mismo registro diario.
+
+GET /records/{id} captura registro, versión, totales e intervalos en una sola transacción RepeatableRead: Prisma puede consultar relaciones en SELECTs separados y no debe mezclar estados de commits diferentes. Verificado por regresión HTTP/PostgreSQL con commit concurrente.
+
+Cierre F-006 aprobado por reviewer independiente y verificación final del leader: build/lint y87/87 HTTP/PostgreSQL (registros23,asistencia26,auth14,estructura8,users16), sin pendientes técnicos. Seis migraciones y seed probadas desde DB vacía dedicada; detalle/matriz coherentes, concurrencia de limpieza corregida y snapshots persistentes al reiniciar API. Comandos en test/README.md.

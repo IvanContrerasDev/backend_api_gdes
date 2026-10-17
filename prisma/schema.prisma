@@ -16,6 +16,7 @@ model User {
   lastName      String
   email         String        @unique
   emailVerifiedAt DateTime?
+  monthlySnapshots MonthlySnapshot[]
   attendanceEvents AttendanceEvent[]
   attendanceRecords AttendanceRecord[]
   authSessions AuthSession[]
@@ -297,6 +298,8 @@ model AttendanceRecord {
   updatedAt DateTime @updatedAt
   @@unique([userId, workplaceId, date])
   @@index([userId, date])
+  @@index([date, userId, workplaceId])
+  @@index([workplaceId])
 }
 model Interval {
   id String @id @default(uuid()) @db.Uuid
@@ -323,4 +326,17 @@ model Interval {
   @@index([entryEventId])
   @@index([exitEventId])
   @@index([absenceEventId])
+}
+
+// Technical immutable monthly read snapshot. Expiry is absolute, never renewed.
+model MonthlySnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  ownerId String @db.Uuid
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  context String
+  payload Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  @@index([expiresAt])
+  @@index([ownerId])
 }

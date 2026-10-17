@@ -233,3 +233,7 @@ Los catálogos son **fijos en código, no configurables** (spec Parte 5). El bac
 AttendanceRecord requiere version para expectedVersion y unicidad (userId, workplaceId, date). Aprobación y corrección incrementan versión; no se borran registros. Solo WORK CLOSED suma totalWorkMinutes; ver tabla de completitud en 05. radiusMeters entero 10–10000, gpsAccuracyThreshold null o entero 1–1000. Dirección/Place ID de Google no se persisten en Workplace. Validaciones/unicidades y DTOs públicos de P-06/P-07 en 03; no exponer passwordHash ni fileKey. Refresh web implementa expiración absoluta y CSRF ratificado en04.
 
 Persistencia de asistencia implementada en20261016030000_attendance, aprobación independiente completada. Event.recordId conserva auditoría; los vínculos entry/exit/absence viven en Interval para permitir futuras correcciones sin reescribir eventos. Workplace con registros congela clientId/siteId bajo lock; snapshots no se reescriben.
+
+### MonthlySnapshot (F-006 implementada y aprobada)
+
+Tabla técnica: id UUID/token opaco, ownerId FK User, context canónico, payload JSON inmutable con filas/días/nombres/estados/totales, createdAt y expiresAt absoluto15min. Índices ownerId/expiresAt; sin updatedAt por inmutabilidad. Limpieza solo expirados. AttendanceRecord agrega índices date/userId/workplaceId y workplaceId para matriz/guard histórico. Los snapshots no autorizan escrituras.
