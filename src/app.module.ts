@@ -1,3 +1,4 @@
+import { FilesModule } from './modules/files/files.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { UsersModule } from './modules/users/users.module';
@@ -25,6 +26,7 @@ import { HealthController } from './health/health.controller';
     UsersModule,
     AttendanceModule,
     DashboardModule,
+    FilesModule,
   ],
   controllers: [HealthController],
   providers: [

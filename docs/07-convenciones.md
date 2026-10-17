@@ -41,6 +41,8 @@
 | 429 | `OTP_RESEND_COOLDOWN` | true | Reenvío de OTP antes de 60 s |
 | 500 | `INTERNAL_ERROR` | true | Error no controlado |
 | 503 | `NOTIFICATION_UNAVAILABLE` | true | Envío no aceptado/ambiguo por proveedor; sin cuerpo upstream ni secretos |
+| 503 | `STORAGE_UNAVAILABLE` | true | Operación de almacenamiento fallida/ambigua, recuperable sin exponer datos upstream |
+| 409 | `FILE_VERSION_CONFLICT` | false | Reemplazo de planilla con expectedVersion desactualizado |
 
 El catálogo combina códigos implementados y previstos: disponibilidad por dominio en03. Asistencia/estructura/users y registros admin tienen implementación; solicitud admin sigue pendiente F-008. ApiException acepta strings y no valida pertenencia al catálogo. Nuevos códigos requieren documentar el contrato común y este catálogo.
 

@@ -76,14 +76,15 @@ export class StructureService {
         if (
           existing &&
           (existing.clientId !== input.clientId || existing.siteId !== input.siteId) &&
-          (await tx.attendanceRecord.findFirst({
+          ((await tx.attendanceRecord.findFirst({
             where: { workplaceId: id },
             select: { id: true },
-          }))
+          })) ||
+            (await tx.timesheet.findFirst({ where: { workplaceId: id }, select: { id: true } })))
         )
           fail(
             'INVALID_WORKPLACE_DATA',
-            'No se puede cambiar el cliente o la provincia de un lugar con registros de asistencia',
+            'No se puede cambiar el cliente o la provincia de un lugar con registros de asistencia o planillas',
           );
         // Lock the destination client so deactivation cannot race eligibility.
 

@@ -1,9 +1,7 @@
 # Estado actual — leader
 
-F-002 a F-006 done y aprobadas. F-005 y F-006 con commits locales creados; sin push. Verificación final propia build/lint y87/87 HTTP/PostgreSQL; seis migraciones/seed verificadas desde DB vacía dedicada. Artefactos cerrados consolidados en01/02/03/05/07, tasks/planes retirados. Sin revisión técnica pendiente.
+F-007 cerrada/aprobada:135/135, build/lint/Prisma,9migracionesvacías y smokeDockerSDK repetido por reviewer. Catálogo público ratificado y solo provincias/enums. F009/proveedores/aprobación ya cerrados con commits locales. Sin push.
 
-Propuesta adicional no aprobada: nueva fichada tras APPROVED volvería PENDING. Comportamiento F005 conservado/documentado en05; retomar solo tras respuesta humana. Propuestas comunes auth/asistencia/registros siguen pendientes de incorporación/sync, SYNCED intactos.
+F-008A in_progress spec/plan008-employee-auth; implementer_providers toma exclusividad fuente/schema/package/build/tests tras commitF007. C preparado, consulta humana pendiente de renovar enlace administrativo vencido tras nueva verificaciónemail, sin inferir aprobación. Propuestas comunes esperan sync externo.
 
-F-007/F-008/F-009 pendientes; contratos de archivos/métricas requieren cierre y providers reales aún no implementados. Producción falla cerrado con providers log. Cambio previo docs01 preferencias preservado fuera del commit.
-
-Docker productiontarget gdes-f006-review:local construido; smoke runtime NODE_ENV=test/DBaislada health200/rutas401/modelosPrisma OK. Contenedor smoke eliminado y DB exclusiva gdes-f003-test detenida/eliminada. Watcher usuario gdes-api reanudado (running=true,paused=false); postgresusuario sigue running. Ningún cambio a DB usuario. Para probar cambios en compose, actualizar dependencias/cliente y migrar según README; no se afirma que su DB/volumen ya estén actualizados.
+Watcher gdes-api pausado; DBtestgdes-f003-test55433 descartable; postgresusuario intacto. Reanudar watcher/eliminar DB al finalizar. No modificar DBusuario.

@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log dev/test y adaptadores Resend/Meta por configuración. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; dashboard mensual implementado y aprobado; archivos y auth avanzada pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log dev/test y adaptadores Resend/Meta por configuración. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; dashboard mensual implementado y aprobado; planillas/documentos/R2 implementados y aprobados; auth avanzada pendiente. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -181,22 +181,37 @@ Provincia: snapshot AttendanceRecord.siteId para registros y workplace.siteId pa
 ### Empleados y estructura
 DTOs, rutas, búsquedas y validaciones aprobados de empleados/clientes/lugares pertenecen a `arquitectura/contratos-api.md` (secciones Empleados y Clientes y lugares). `/users/{id}/account-status` usa `{ accountStatus }`; clients/workplaces usan PUT completo para edición. No hay DELETE de entidades.
 
-### Planillas (`/timesheets`)
-- `GET /timesheets` — paginado; orden default `year desc, month desc, sequenceNumber desc`; filtros: `employeeId`, `clientId`, `workplaceId`, `siteId`, `month`, `year`, `status`. Columnas de listado según §39.4 (incluye `uploadedBy`).
-- `POST /timesheets` — upload por admin para cualquier empleado (mismo comportamiento que mobile, §39.3).
-- `PATCH /timesheets/{id}/status` — `{ "status": "PENDING" | "LOADED" | "ERROR" }`.
-- `PUT /timesheets/{id}/file` — reemplazo de archivo (borra el anterior del bucket).
-- `GET /timesheets/{id}/file` — devuelve `{ "data": { "downloadUrl": "<url firmada, expira 15 min>" } }`.
+### Archivos — F-007 implementada y aprobada
 
-### Documentos / legajos (`/documents`)
-- `GET /documents` — paginado; orden default `createdAt desc`; filtros: `employeeId`, `type`, `uploadedBy`, rango de fechas `from`/`to`.
-- `POST /documents` — upload por admin (multipart, `employeeId` requerido).
-- `PATCH /documents/{id}` — edición de `type` y `fileName` (§40.4).
-- `DELETE /documents/{id}` — elimina registro y archivo del bucket (§40.5).
-- `GET /documents/{id}/file` — URL firmada de descarga.
+Uploads multipart proxificados,1–10archivos y20MiB inclusivos por archivo; validar extensión/contenido antes de publicar metadata. Formatos pdf/jpg/jpeg/png/doc/docx/txt. No se genera asistencia ni OCR. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE carga para sí y lee/descarga solo archivos propios. Un id ajeno devuelve404 NOT_FOUND. No exponer fileKey/credenciales ni URL estable de bucket.
 
-### Catálogos
-`GET /catalogs` → `{ "data": { "absenceReasons": [...], "documentTypes": [...], "sites": [...] } }` con `value` + `label` en español. Fuente única de labels para ambas apps.
+Timesheet público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{id,name},client:{id,name},site:{id,name},month,year,sequence,status,fileName,fileExtension,fileSizeBytes,uploadedBy:{id,firstName,lastName},createdAt,updatedAt,version,replacedBy:{id,firstName,lastName}|null}`. sequence mapea sequenceNumber DB. uploadedBy/createdAt originales se conservan; replacedBy registra último reemplazante.
+
+Document público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{id,name}|null,type,fileName,fileExtension,fileSizeBytes,uploadedBy:{id,firstName,lastName},createdAt,updatedAt}`.
+
+| Ruta | Entrada y salida |
+|---|---|
+| POST /timesheets | Multipart workplaceId/month/year/files repetidos; admin employeeId UUID requerido, móvil deriva de sesión.201 móvil `{data:{timesheetIds,message}}`; admin `{data:{created:Timesheet[]}}`. InicialPENDING y secuencia consecutiva por empleado/lugar/período |
+| GET /timesheets | Admin paginado page1/pageSize25(máx100); filtros search/employeeId/clientId/workplaceId/siteId/month/year/status. Orden yearDESC,monthDESC,sequenceDESC,idASC |
+| GET /timesheets/{id} | Detalle admin o propietario |
+| PATCH /timesheets/{id}/status | Admin `{status:PENDING|LOADED|ERROR}`, devuelve Timesheet, version+1; serializado con reemplazo |
+| PUT /timesheets/{id}/file | Admin multipart file único y expectedVersion entero>=1. Conserva identidad/período/secuencia/uploader/fechaoriginal; PENDING,version+1/replacedBy actualizado.409 FILE_VERSION_CONFLICT si cambió |
+| GET /timesheets/{id}/file | Admin o propietario, `{data:{downloadUrl,expiresAt}}`, firma15min y no-store |
+| POST /documents | Multipart type/files, workplaceId opcional(omitido/vacío/'null'→null); admin employeeId UUID, móvil deriva de sesión.201 móvil `{data:{documentIds,message}}`, admin `{data:{created:Document[]}}` |
+| GET /documents | Admin paginado; filtros search/employeeId/type/uploadedBy(texto nombre/apellido uploader)/uploadedFrom/uploadedTo. Orden createdAtDESC,idASC |
+| GET /documents/{id} | Detalle admin o propietario |
+| PATCH /documents/{id} | Admin type y/o fileName, al menos uno; nombre visibletrim1–120, extensión real/contentType/fileKey intactos |
+| DELETE /documents/{id} | Admin204, elimina metadata y programa borrado físico recuperable |
+| GET /documents/{id}/file | Admin o propietario, misma respuesta firmada15min |
+| GET /catalogs | Público ratificado: provincias/enums fijos con value/label español para uso antes del registro; sin empleados/clientes/lugares |
+
+FiltrosAND, búsqueda parcial sin case/acentos por nombre de archivo y nombre/apellido/nombre completo/legajo empleado; uploadedBy busca nombre completo también. month1–12/year2000–9999, fechas uploadedFrom/To civiles reales GMT-3 inclusivas, from<=to; no alias from/to ni sort libre. Queries/campos desconocidos/repetidos o inválidos422 VALIDATION_ERROR. Cero bytes, exceso de archivos o multipart inválido422 VALIDATION_ERROR; tamaño422 FILE_TOO_LARGE; extensión/contenido422 FILE_TYPE_NOT_ALLOWED. Nombre de archivo sin rutas/control characters. TXT UTF8sinNUL; DOC WordOLE estructural acotado; DOCX WordOpenXML válido con ZIP/XMLlimitados, no XLSX/ZIP genérico o macro enabled disfrazado. No antivirus.
+
+Nuevas cargas/reemplazos exigen empleado y lugar/cliente activos; lectura/descarga de históricos y cambio admin de status/metadata siguen disponibles aunque estén inactivos. Lugar con registros O planillas no permite cambiar cliente/provincia bajo lockWorkplace; relaciones iguales/nombre/geometría siguen editables.
+
+Objetos nuevos en claves únicas antes de commit de metadata; lote visible todo-o-nada. Archivo anterior de reemplazo solo se limpia después de confirmar nuevo. Borrados fallidos/ambiguos tienen journal persistido y reintento; nunca borrar keys actualmente referenciadas. Publicación y worker coordinan locks/lease fresca e intentos para no publicar tras DELETE ambiguo; namespace de destino evita consumir cleanup de otro bucket/endpoint. Ante fallo R2, consistencia física eventual documentada en06; no se promete transacción distribuida perfecta. Descargas solicitan firma nueva al reintentar.
+
+No DELETE de planillas. Catálogo DocumentType incluye INTERNAL_RULES→Normas internas, no alias INTERNAL_POLICIES. Labels completos en02. Incorporación de ajustes humanos al común pendiente de sync(propuesta20261017-files-contract).
 
 ## Dueños de contratos compartidos
 
@@ -220,12 +235,12 @@ Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arq
 - Sesión web: base de seguridad para desarrollo/pruebas ratificada en 04 (cookie __Host, preauth/CSRF, sesión interna y Origin exacto); propuesta común pendiente de sync. Dominios de producción, fallback y pruebas de navegador siguen pendientes para despliegue/F-010. Reenvío 2FA admin y logout offline frontend requieren precisión; no se exponen rutas/campos nuevos por suposición.
 - Asistencia: online usa hora del servidor; offline conserva hora original y valida hora actual del teléfono al sincronizar (adelanto máximo dos minutos). Se conserva ventana offline24h y procesamiento por recepción. DTO y casos fuera de orden en05; API implementada y aprobada tras revisión independiente.
 - Detalle F-006: ajustes ratificados e implementados al final de este documento. Metadata conserva contenido original; usos EventOrigin.ADMIN fuera de correcciones no definidos.
-- Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. Catálogos públicos/privados y permisos deben definirse sin exponer datos operativos.
+- Filtros/listados genéricos del diseño base no constituyen allowlist final para recursos todavía no cerrados. GET /catalogs público ratificado, limitado a provincias y enums fijos; sin datos operativos.
 - El interceptor implementado conserva `{data,pagination}` y envuelve una sola vez los payloads simples. `ApiException` acepta cualquier string y no valida catálogo; 07 documenta el diseño, no validación automática.
 
 ## Diferencias abiertas con archivos/métricas mock
 
-El humano ratificó `/dashboard/metrics` con month/year y byProvince (sección Dashboard). El mock exige `expiresAt` en descarga, mientras el acuerdo vigente solo garantiza `downloadUrl`. DTOs completos de listado/upload, multipart, reemplazo y alcance provincial fueron ratificados localmente; DTOs de archivos se concretan en F-007. Los ajustes comunes esperan incorporación/sync. No inferir aprobación de los servicios frontend. El diseño base anterior no cubre aún todas esas necesidades. URLs firmadas de 15 min se solicitan al descargar, sin persistirlas como dato estable.
+El humano ratificó `/dashboard/metrics` con month/year y byProvince (sección Dashboard). El humano ratificó expiresAt junto a downloadUrl, respuesta de upload según rol, INTERNAL_RULES y reemplazo PENDING con CAS/auditoría. DTOs de archivos/multipart/filtros se publican en esta sección; ajustes humanos comunes esperan incorporación/sync. No inferir aprobación de los servicios frontend. El diseño base anterior no cubre aún todas esas necesidades. URLs firmadas de 15 min se solicitan al descargar, sin persistirlas como dato estable.
 
 ## Evidencia de implementación vigente
 

@@ -15,6 +15,9 @@ const env = Object.fromEntries(
     }),
 );
 Object.assign(env, process.env, {
+  NODE_ENV: 'test',
+  EMAIL_PROVIDER: 'log',
+  WHATSAPP_PROVIDER: 'log',
   DATABASE_URL: process.env.TEST_DATABASE_URL,
   JWT_ACCESS_SECRET: 'test-f005-access-secret',
   PORT: '33447',

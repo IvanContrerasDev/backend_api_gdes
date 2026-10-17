@@ -1,6 +1,6 @@
 # 06 — Integraciones externas
 
-**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage/Google aún no implementados. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
+**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage R2 implementado y aprobado por revisión independiente; Google aún no implementado. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
 
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 
@@ -31,13 +31,15 @@ Interfaz: `sendOtp({ phone, code })`. WHATSAPP_PROVIDER=log|meta, independiente 
 
 Proveedor elegido por el humano (2026-09-15): **Cloudflare R2**. Racional de elección: API S3-compatible y costo/egress esperado al decidir; tarifas y límites se verifican antes del deploy, sin prometer condiciones permanentes — se usa con el SDK estándar de AWS S3 apuntando al endpoint de R2, así que migrar a otro proveedor S3-compatible es solo cambiar variables de entorno.
 
-Interfaz: `upload({ key, body, contentType })`, `delete({ key })`, `getSignedDownloadUrl({ key, expiresIn })`.
+Interfaz actual: `upload({key,path,size,contentType})`, `delete(key)`, `getSignedDownloadUrl(key)`→`{downloadUrl,expiresAt}`. R2StorageService usa AWS SDK v3 y presigner, claves únicas por versión, firma900s; namespace de destino derivado de endpoint+bucket. Timeout upload30s/delete10s y error503 STORAGE_UNAVAILABLE sin contenido upstream. No hay adaptador no-op exitoso ni flags fake de producción; pruebas usan servidor S3 compatible simulado.
 
 - Config: `STORAGE_ENDPOINT` (endpoint S3 de la cuenta R2), `STORAGE_BUCKET`, `STORAGE_REGION=auto`, `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`.
 - **Uploads proxificados por el backend** (MVP): el cliente sube `multipart/form-data` al endpoint; el backend valida (extensión + magic bytes, 20 MiB máx., diez archivos por lote atómico con rollback de DB/bucket) y persiste en el bucket. No se exponen URLs firmadas de subida en el MVP — centraliza validación y antivirus futuro.
-- **Descargas con URL firmada** (15 min): `GET /timesheets/{id}/file` y `GET /documents/{id}/file` devuelven `{ data: { downloadUrl } }`.
-- Layout de claves: `timesheets/{employeeId}/{year}-{month}/{timesheetId}/{fileName}` y `documents/{employeeId}/{documentId}/{fileName}`.
-- Reemplazo de planilla: subir nueva clave y **borrar la anterior del bucket** (spec §39.5). Eliminación de documento: borrar clave (§40.5).
+- **Descargas con URL firmada** (15 min): `GET /timesheets/{id}/file` y `GET /documents/{id}/file` devuelven `{ data: { downloadUrl, expiresAt } }`.
+- Claves incluyen empleado/recurso y UUID nuevo de versión antes del nombre validado; nunca sobrescribir clave anterior. Reemplazo conserva identidad DB pero genera key nueva. No usar ruta/nombre del cliente como temporal de filesystem.
+- Reemplazo de planilla: validar/subir key nueva, publicar metadata PENDING con CAS y programar borrado anterior solo tras commit. Eliminación de documento elimina metadata y programa borrado físico. Journal StorageCleanupJob se crea ANTES de PUT, con namespace endpoint+bucket/lease; publica y cleanup coordinan locks. Worker comprueba referencias actuales y jamás borra key vigente; lease se valida con reloj fresco tras lock. DELETE/PUT/commit ambiguos y fallos de compensación se recuperan desde DB tras reinicio con backoff hasta1h. Consistencia física eventual ante fallo, sin prometer atomicidad distribuida perfecta.
+- Worker interno necesita proceso Node activo; al reiniciar retoma jobs. Cambiar bucket/endpoint no migra objetos ni su journal: workers no consumen jobs de otro destino. Debe planearse una migración de storage antes de cambiar esa configuración con archivos existentes.
+- Endpoint exige HTTPS en producción y no admite credentials/query/hash; HTTP solo loopback no productivo para pruebas. .env.example contiene placeholder válido, reemplazarlo antes de operar archivos. Capacidad de proxy/hosting para lotes de hasta200MiB pendiente de validar al desplegar. Ningún archivo se subió a R2 real durante desarrollo.
 
 ## 4. Google OAuth
 
@@ -57,3 +59,5 @@ Interfaz: `upload({ key, body, contentType })`, `delete({ key })`, `getSignedDow
 503 NOTIFICATION_UNAVAILABLE con mensaje español y retryable=true; nunca incluir cuerpo upstream, tokens, destinatarios ni credenciales en errores/logs. Selectores desconocidos/config real incompleta fallan al boot; producción rechaza cualquier log y exige ADMIN_FRONTEND_URL HTTPS. No hay llamadas de red al iniciar. Las pruebas usan transporte HTTP fake/loopback, sin envío a terceros. Fuentes del adaptador: [Resend Send Email](https://resend.com/docs/api-reference/emails/send-email), [idempotencia](https://resend.com/docs/dashboard/emails/idempotency-keys), [colección oficial Meta](https://www.postman.com/meta/whatsapp-business-platform/overview). No se certificó dominio, número/plantilla, entrega real ni despliegue.
 
 Verificación actual de adaptadores: build/lint y105/105 pruebas completas, incluidas8 de providers, por implementer y reviewer independientes. Transporte HTTP simulado/loopback; producción operativa y entrega real permanecen por validar con servicios provisionados.
+
+Verificación de archivos: suite conjunta135/135 (archivos30), build/lint/Prisma, nueve migraciones+seed desde DBvacía, imagen gdes-f007-review:local(74d8a89595c1) y smoke repetido por reviewer. SDK real carga/descarga firma900s/bytes/borrado204 frente a S3simulado, catálogo público200/guards401. Sin cuentas R2 reales ni modificaciones a base/volúmenes del usuario.

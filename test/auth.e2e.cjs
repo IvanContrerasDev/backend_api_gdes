@@ -115,6 +115,8 @@ before(async () => {
       DATABASE_URL: process.env.TEST_DATABASE_URL,
       PORT: '33444',
       NODE_ENV: 'test',
+      EMAIL_PROVIDER: 'log',
+      WHATSAPP_PROVIDER: 'log',
       JWT_REFRESH_SECRET: 'test-f002-refresh-secret',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

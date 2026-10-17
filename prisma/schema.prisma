@@ -16,6 +16,8 @@ model User {
   lastName      String
   email         String        @unique
   emailVerifiedAt DateTime?
+  documents Document[] @relation("DocumentEmployee")
+  uploadedDocuments Document[] @relation("DocumentUploader")
   timesheets Timesheet[] @relation("TimesheetEmployee")
   uploadedTimesheets Timesheet[] @relation("TimesheetUploader")
   replacedTimesheets Timesheet[] @relation("TimesheetReplacer")
@@ -198,6 +200,7 @@ model Workplace {
   attendanceEvents AttendanceEvent[]
   attendanceRecords AttendanceRecord[]
   timesheets Timesheet[]
+  documents Document[]
 
   @@index([clientId, siteId, status])
 }
@@ -356,10 +359,11 @@ model Timesheet {
   year Int
   sequenceNumber Int
   status TimesheetStatus @default(PENDING)
-  fileKey String
+  fileKey String @unique
   fileName String
   fileExtension String
   fileSizeBytes Int
+  contentType String @default("application/octet-stream")
   uploadedById String @db.Uuid
   uploadedBy User @relation("TimesheetUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
   replacedById String? @db.Uuid
@@ -370,4 +374,39 @@ model Timesheet {
   @@unique([employeeId, workplaceId, month, year, sequenceNumber])
   @@index([year, month, status])
   @@index([workplaceId])
+}
+
+model Document {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee User @relation("DocumentEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  workplaceId String? @db.Uuid
+  workplace Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  type DocumentType
+  fileKey String @unique
+  fileName String
+  fileExtension String
+  fileSizeBytes Int
+  contentType String
+  uploadedById String @db.Uuid
+  uploadedBy User @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([employeeId, createdAt])
+  @@index([uploadedById])
+  @@index([workplaceId])
+  @@index([createdAt, id])
+}
+
+// A pre-upload journal also recovers abandoned or ambiguously committed objects.
+// Publication and cleanup serialize on this row; immutable keys are never reused.
+model StorageCleanupJob {
+  id String @id @default(uuid()) @db.Uuid
+  key String @unique
+  namespace String @default("")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([namespace, nextAttemptAt])
 }

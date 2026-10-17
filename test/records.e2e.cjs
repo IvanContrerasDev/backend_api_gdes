@@ -15,6 +15,9 @@ const env = Object.fromEntries(
     }),
 );
 Object.assign(env, process.env, {
+  NODE_ENV: 'test',
+  EMAIL_PROVIDER: 'log',
+  WHATSAPP_PROVIDER: 'log',
   DATABASE_URL: process.env.TEST_DATABASE_URL,
   JWT_ACCESS_SECRET: 'test-f006-access-secret',
   PORT: '33448',
@@ -1274,14 +1277,16 @@ test('GET record detail captures one coherent version with its intervals across 
   assert.equal(fresh.intervals[0].endTime, '2024-02-01T14:00:00.000Z');
 });
 
-
 test('each new attendance type reopens APPROVED records while preserving manual origin and original events', async () => {
   for (const type of ['CHECK_IN', 'CHECK_OUT', 'ABSENCE']) {
     for (const corrected of [false, true]) {
       const who = await person();
       const first = await accepted(input(), who);
       if (corrected) {
-        const edit = await patch(first.recordId, { expectedVersion: 1, observations: 'Corrección auditada' });
+        const edit = await patch(first.recordId, {
+          expectedVersion: 1,
+          observations: 'Corrección auditada',
+        });
         assert.equal(edit.status, 200, JSON.stringify(edit.body));
       }
       const before = await record(first.recordId);
@@ -1290,7 +1295,9 @@ test('each new attendance type reopens APPROVED records while preserving manual 
         body: { expectedVersion: before.version, reviewStatus: 'APPROVED' },
       });
       assert.equal(approved.status, 200, JSON.stringify(approved.body));
-      const originalEvent = await db.attendanceEvent.findUniqueOrThrow({ where: { id: first.eventId } });
+      const originalEvent = await db.attendanceEvent.findUniqueOrThrow({
+        where: { id: first.eventId },
+      });
       const next = await accepted(input({ type }), who);
       assert.equal(next.recordId, first.recordId);
       const after = await record(first.recordId);
@@ -1298,7 +1305,10 @@ test('each new attendance type reopens APPROVED records while preserving manual 
       assert.equal(after.version, before.version + 2);
       assert.equal(after.origin, corrected ? 'MANUAL' : 'AUTOMATIC');
       assert.equal(after.observations, corrected ? 'Corrección auditada' : null);
-      assert.deepEqual(await db.attendanceEvent.findUniqueOrThrow({ where: { id: first.eventId } }), originalEvent);
+      assert.deepEqual(
+        await db.attendanceEvent.findUniqueOrThrow({ where: { id: first.eventId } }),
+        originalEvent,
+      );
       assert.equal(after.intervals[0].entryEventId, first.eventId);
       assert.equal(await db.attendanceEvent.count({ where: { recordId: first.recordId } }), 2);
     }
@@ -1323,7 +1333,10 @@ test('replayed and rejected attendance leave approval, version, intervals and ev
   await error(input({ type: 'UNKNOWN' }), 'VALIDATION_ERROR', 422, who);
   await error(input({ longitude: 1 }), 'OUT_OF_WORKPLACE_AREA', 403, who);
   assert.deepEqual(await record(first.recordId), before);
-  assert.deepEqual(await db.attendanceEvent.findMany({ where: { recordId: first.recordId } }), events);
+  assert.deepEqual(
+    await db.attendanceEvent.findMany({ where: { recordId: first.recordId } }),
+    events,
+  );
 });
 
 test('normal new attendance preserves NONE and MANUAL_LOADED without broadening the approval transition', async () => {

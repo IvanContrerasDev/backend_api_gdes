@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "descripcion": "Backlog de features de backend_api_gdes. El leader local es el único que modifica estados. Estados: pending | in_progress | done. Una sola feature puede estar in_progress a la vez.",
+  "descripcion": "Backlog backend. Leader modifica estados pending/in_progress/done. Por defecto una feature activa; varias solo con paralelismo coordinado de ownership disjunto.",
   "features": [
     {
       "id": "F-001",
@@ -106,15 +106,16 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
         "POST /timesheets y POST /documents multipart con validación extensión + contenido, 20 MiB por archivo y máximo 10 por lote atómico",
         "StorageService sobre R2 (API S3-compatible): upload, delete, URL firmada de descarga (15 min)",
-        "Timesheet: sequenceNumber por período, estados PENDING/LOADED/ERROR, reemplazo preserva original hasta confirmar nuevo válido; estado/auditoría/concurrencia pendientes de ratificación",
+        "Timesheet: secuencia por período, PENDING/LOADED/ERROR, reemplazo CAS conserva identidad/auditoría original y vuelve PENDING; guarda reemplazante",
         "Document: catálogo de 9 tipos, edición tipo/nombre, eliminación con borrado en el bucket",
-        "GET /catalogs con labels en español"
-      ]
+        "GET /catalogs público con provincias y labels de tipos fijos en español; sin datos operativos"
+      ],
+      "documentation": "docs/03-contratos-api.md"
     },
     {
       "id": "F-008",
@@ -122,8 +123,8 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
-      "taskSpec": null,
+      "estado": "in_progress",
+      "taskSpec": "docs/tasks/008-employee-auth.md",
       "criterios": [
         "2FA por email en login admin (código 6 dígitos, 10 min, 5 intentos)",
         "Login mobile con identifier+password exige OTP WhatsApp tras validar credenciales (202 + challengeId; tokens solo vía /auth/otp/verify)",
@@ -132,7 +133,8 @@
         "Login mobile (password y Google) con email sin verificar → 403 EMAIL_NOT_VERIFIED; GET /auth/email/verify y reenvío neutro",
         "Recuperación con token de un solo uso; flujo admin-access-request con emails y links firmados aprobar/rechazar (Resend)",
         "Providers Email/WhatsApp con implementación log en dev"
-      ]
+      ],
+      "implementation": "Base OTP/2FA y adaptadores reales Resend/Meta aprobados. Pendientes registro/email/recovery/Google y solicitud admin."
     },
     {
       "id": "F-009",
@@ -140,12 +142,13 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
-        "Contadores pendingTimesheets, incompleteRecords, pendingReviewRecords y recordsWithAbsence del mes seleccionado; ruta final y byProvince pendientes de acuerdo",
-        "Período month/year seleccionado y destino coherente; scope provincial/siteId pendiente de ratificación, sin inferirlo del mock"
-      ]
+        "GET /dashboard/metrics con month/year y cuatro contadores del mes, DTO ratificado con byProvince",
+        "Totales generales y desglose de todas las provincias incluidos ceros; fuentes reales y lectura consistente"
+      ],
+      "documentation": "docs/03-contratos-api.md"
     }
   ]
 }
