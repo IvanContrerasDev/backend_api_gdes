@@ -120,6 +120,7 @@ test('notification selectors accept only known independent providers and reject 
       ...configValues,
       NODE_ENV: 'production',
       ADMIN_FRONTEND_URL: 'https://admin.example.com',
+      API_PUBLIC_URL: 'https://api.example.com',
     }),
   );
 });

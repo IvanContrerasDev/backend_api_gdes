@@ -1,6 +1,6 @@
 # 04 — Autenticación y seguridad
 
-**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; Resend/Meta implementados, log bloqueado en producción. Google, registro, magic link, recuperación y solicitud admin siguen pendientes. Adaptadores reales de notificación implementados/aprobados; requieren provisionamiento externo. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
+**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; Resend/Meta implementados, log bloqueado en producción. Registro, magic link, recuperación y Google implementados y aprobados; solicitud admin pendiente. Adaptadores reales de notificación implementados/aprobados; requieren provisionamiento externo. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
 
 ## Tokens
 
@@ -52,7 +52,7 @@
 1. `POST /auth/password-recovery` → respuesta neutra siempre (no revela si el email existe).
 2. Email con enlace que contiene token firmado (1 h, un solo uso).
 3. `POST /auth/password-reset` con token + nueva contraseña (misma política).
-4. Al resetear se revocan todos los refresh tokens del usuario.
+4. Al resetear se revocan todas las sesiones (access y refresh) y los challenges anteriores mediante generación de credenciales.
 
 ### 6. Alta de administradores
 
@@ -101,3 +101,15 @@ Rate limit persistido y atómico (ventana10 min): login por IP100 y por identifi
 Secrets access/refresh distintos obligatorios al boot. Providers log redactan destinatarios y muestran solo códigos OTP deliberados de desarrollo; no envían mensajes reales. Adaptadores Resend/Meta implementados por configuración con transporte/errores/reintentos en06; las pruebas no enviaron mensajes reales. Las suites HTTP/PostgreSQL usan fixtures dedicadas, no credenciales de seed productivo. Validación reproducible en test/README.md; pruebas de navegador/producción son F-010 y no se sustituyen por tests HTTP.
 
 Cierre F-002 con revisión independiente aprobada, build/lint y 22/22 pruebas HTTP/PostgreSQL (auth14 + estructura8), sin observaciones técnicas abiertas. Regresión de expiración tras lock User comprueba OTP_EXPIRED sin consumo ni sesión, y JSON malformado conserva BAD_REQUEST español/no-store.
+
+## Registro, enlaces y Google — implementación F-008A
+
+Registro conserva perfil validado y Argon2 en RegistrationChallenge separado; nunca contraseña plana. OTP6/10min/5intentos/cooldown60s y límites IP/identidad persistidos. Retención absoluta72h con purga al inicio y cada60s; payload null al consumo. Verificar crea User, consume OTP y persiste AuthLink+AuthEmailIntent en la misma transacción; responde202 sin esperar email. Expiración se revalida después de bloqueos y unicidad; un vencimiento tardío revierte toda creación.
+
+AuthLink distingue EMAIL_VERIFICATION24h y PASSWORD_RESET1h, firma HS256 separada por propósito y hashDB. Se liga a usuario, credentialVersion y hash del email destino; editar email invalida enlaces previos. Destino verificación: API_PUBLIC_URL/api/v1/auth/email/verify;302 fijo a MOBILE_DEEP_LINK_SCHEME://email-verified?success=true. Recuperación: ADMIN_FRONTEND_URL/password-reset?token=... para ambas apps. API_PUBLIC_URL es origen puro configurado, defaultdev/test localhost3000; producción exige HTTPS explícito, sin confiar en Host/Forwarded. Integración de pantallas y deep links pendiente en las apps.
+
+Reset bloquea User→Link/sesiones, incrementa User.credentialVersion y consume enlaces de recuperación; no adquiere challenges después de User. Login captura generación y contacto junto a la credencial comprobada. Verify/resend compara destinationHash y generación bajo Challenge→User: editar teléfono/email o cambiar contraseña invalida la prueba previa, sin rehabilitarla con resend.
+
+Resend de verificación y recovery encolan una intención equivalente por cada email válido antes de202; no consultan identidad ni esperan proveedor de forma condicional. Worker procesa fuera de la respuesta y comprueba elegibilidad. Destinatario AES256-GCM cifrado; bearer no persistido, reconstruido idéntico desde metadatos del enlace. Intentos máximos3, lease60s con fencing, ciclo250ms/lote20 y TTL1h/24h. Namespace de clave/orígenes/proveedor/from aísla configuraciones: al rotar, drenar configuración anterior o solicitar enlace nuevo; no migra trabajos antiguos. Purga al iniciar y mientras proceso activo. Aceptación del proveedor no certifica entrega ni exactly-once.
+
+Google usa google-auth-library10.5.0: firma, issuer, aud string exacto, exp estricto y email_verified=true. Solo EMPLOYEE ACTIVE existente con email local verificado; sin alta/fusión/cambio de perfil. El campo phone de entrada se valida, pero el OTP se envía exclusivamente al teléfono registrado. La verificación Google no sustituye OTP ni verificación local del email. Pruebas incluyen SDK real con RSA offline, sin cuentas externas.

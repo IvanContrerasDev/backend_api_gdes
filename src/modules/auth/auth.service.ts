@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuthClient, AuthSession, Prisma, User } from '@prisma/client';
+import { AuthClient, AuthSession, OtpPurpose, Prisma, User } from '@prisma/client';
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { ApiException } from '../../common/errors/api.exception';
@@ -84,27 +84,52 @@ export class AuthService {
     }
     if (!user || !valid) throw failure(401, 'INVALID_CREDENTIALS', 'Credenciales inválidas');
     this.checkUser(user, input.client);
-    await this.limit('challenge-user', user.id + input.client, 10);
+    return this.createChallenge(
+      user,
+      input.client,
+      input.client === 'MOBILE' ? 'LOGIN' : 'ADMIN_2FA',
+      preauth,
+      input.rememberSession ?? false,
+    );
+  }
+  destinationHash(user: User, client: AuthClient): string {
+    return this.hash(
+      'otp-destination:' +
+        (client === 'ADMIN'
+          ? user.email.trim().toLowerCase()
+          : user.email.trim().toLowerCase() + ':' + user.phone),
+    );
+  }
+  async createChallenge(
+    user: User,
+    client: AuthClient,
+    purpose: OtpPurpose,
+    preauth?: string,
+    rememberSession = false,
+  ) {
+    await this.limit('challenge-user', user.id + client, 10);
     const code = String(randomInt(1000000)).padStart(6, '0');
     const challenge = await this.db.authChallenge.create({
       data: {
         userId: user.id,
-        client: input.client,
-        purpose: input.client === 'MOBILE' ? 'LOGIN' : 'ADMIN_2FA',
+        credentialVersion: user.credentialVersion,
+        destinationHash: this.destinationHash(user, client),
+        client: client,
+        purpose,
         codeHash: this.hash('otp:' + code),
         preauthHash: preauth ? this.hash(preauth) : null,
-        rememberSession: input.rememberSession ?? false,
+        rememberSession: rememberSession,
         expiresAt: new Date(Date.now() + 600000),
       },
     });
-    if (input.client === 'ADMIN')
+    if (client === 'ADMIN')
       await this.email.sendEmail({
         to: user.email,
         subject: 'Código de acceso GdeS',
         html: `<p>Tu código de acceso es <strong>${code}</strong>. Vence en 10 minutos.</p>`,
       });
     else await this.whatsapp.sendOtp({ phone: user.phone, code });
-    return input.client === 'ADMIN'
+    return client === 'ADMIN'
       ? { twoFactorRequired: true, challengeId: challenge.id }
       : { otpRequired: true, challengeId: challenge.id };
   }
@@ -114,7 +139,9 @@ export class AuthService {
     if (
       !initial ||
       initial.client !== client ||
-      initial.purpose !== (client === 'MOBILE' ? 'LOGIN' : 'ADMIN_2FA')
+      !(client === 'MOBILE'
+        ? ['LOGIN', 'GOOGLE_LOGIN'].includes(initial.purpose)
+        : initial.purpose === 'ADMIN_2FA')
     )
       throw failure(401, 'INVALID_OTP', 'Código inválido');
     if (client === 'ADMIN' && (!preauth || initial.preauthHash !== this.hash(preauth)))
@@ -125,7 +152,9 @@ export class AuthService {
       const c = await tx.authChallenge.findUniqueOrThrow({ where: { id } });
       if (
         c.client !== client ||
-        c.purpose !== (client === 'MOBILE' ? 'LOGIN' : 'ADMIN_2FA') ||
+        !(client === 'MOBILE'
+          ? ['LOGIN', 'GOOGLE_LOGIN'].includes(c.purpose)
+          : c.purpose === 'ADMIN_2FA') ||
         (client === 'ADMIN' && (!preauth || c.preauthHash !== this.hash(preauth)))
       )
         return { error: failure(401, 'INVALID_OTP', 'Código inválido') };
@@ -147,6 +176,11 @@ export class AuthService {
       await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${c.userId}::uuid FOR UPDATE`;
       const user = await tx.user.findUniqueOrThrow({ where: { id: c.userId } });
       this.checkUser(user, client);
+      if (
+        c.credentialVersion !== user.credentialVersion ||
+        c.destinationHash !== this.destinationHash(user, client)
+      )
+        return { error: failure(401, 'INVALID_OTP', 'Código inválido') };
       // Account-lock waits may outlive the OTP checked before acquiring that lock.
       const consumedAt = new Date();
       if (c.expiresAt.getTime() <= consumedAt.getTime())
@@ -272,19 +306,34 @@ export class AuthService {
   async resend(id: string, ip: string) {
     await this.limit('resend-ip', ip, 50);
     const initial = await this.db.authChallenge.findUnique({ where: { id } });
-    if (!initial || initial.client !== 'MOBILE' || initial.purpose !== 'LOGIN')
+    if (
+      !initial ||
+      initial.client !== 'MOBILE' ||
+      !['LOGIN', 'GOOGLE_LOGIN'].includes(initial.purpose)
+    )
       throw failure(401, 'INVALID_OTP', 'Challenge inválido');
     await this.limit('resend-user', initial.userId, 5);
     const code = String(randomInt(1000000)).padStart(6, '0');
     const user = await this.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "AuthChallenge" WHERE "id"=${id}::uuid FOR UPDATE`;
       const c = await tx.authChallenge.findUniqueOrThrow({ where: { id } });
-      if (c.client !== 'MOBILE' || c.purpose !== 'LOGIN' || c.consumedAt || c.attempts >= 5)
+      if (
+        c.client !== 'MOBILE' ||
+        !['LOGIN', 'GOOGLE_LOGIN'].includes(c.purpose) ||
+        c.consumedAt ||
+        c.attempts >= 5
+      )
+        throw failure(401, 'INVALID_OTP', 'Challenge inválido');
+      await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${c.userId}::uuid FOR UPDATE`;
+      const user = await tx.user.findUniqueOrThrow({ where: { id: c.userId } });
+      this.checkUser(user, 'MOBILE');
+      if (
+        c.credentialVersion !== user.credentialVersion ||
+        c.destinationHash !== this.destinationHash(user, 'MOBILE')
+      )
         throw failure(401, 'INVALID_OTP', 'Challenge inválido');
       if (c.sentAt.getTime() + 60000 > Date.now())
         throw failure(429, 'OTP_RESEND_COOLDOWN', 'Esperá antes de reenviar');
-      const user = await tx.user.findUniqueOrThrow({ where: { id: c.userId } });
-      this.checkUser(user, 'MOBILE');
       await tx.authChallenge.update({
         where: { id },
         data: {

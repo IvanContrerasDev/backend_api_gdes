@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
 import { AuthenticatedRequest, JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ChallengeDto, LoginDto, RefreshDto, VerifyDto } from './auth.dto';
+import { AuthRegistrationService } from './auth-registration.service';
 import { AuthService, failure, invalid } from './auth.service';
 const REFRESH = '__Host-gdes-refresh';
 const PREAUTH = '__Host-gdes-preauth';
@@ -11,6 +12,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly config: ConfigService,
+    private readonly registration: AuthRegistrationService,
   ) {}
   cookies(req: Request): Record<string, string> {
     const cookies = Object.create(null) as Record<string, string>;
@@ -96,7 +98,15 @@ export class AuthController {
   }
   @Post('otp/verify')
   @HttpCode(200)
-  async verify(@Body() input: VerifyDto, @Req() req: Request) {
+  async verify(
+    @Body() input: VerifyDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (await this.registration.has(input.challengeId)) {
+      res.status(202);
+      return this.registration.verify(input.challengeId, input.code, req.ip ?? 'unknown');
+    }
     const r = await this.auth.verify(input.challengeId, input.code, 'MOBILE', req.ip ?? 'unknown');
     return { ...r.response, tokens: { ...r.response.tokens, refreshToken: r.refreshToken } };
   }
@@ -116,7 +126,9 @@ export class AuthController {
   }
   @Post('otp/resend')
   @HttpCode(202)
-  resend(@Body() input: ChallengeDto, @Req() req: Request) {
+  async resend(@Body() input: ChallengeDto, @Req() req: Request) {
+    if (await this.registration.has(input.challengeId))
+      return this.registration.resend(input.challengeId, req.ip ?? 'unknown');
     return this.auth.resend(input.challengeId, req.ip ?? 'unknown');
   }
   @Post('refresh')

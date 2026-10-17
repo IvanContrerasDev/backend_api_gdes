@@ -26,6 +26,8 @@ model User {
   attendanceRecords AttendanceRecord[]
   authSessions AuthSession[]
   authChallenges AuthChallenge[]
+  authLinks AuthLink[]
+  credentialVersion Int @default(0)
   passwordHash  String
   phone         String
   dni           String        @unique
@@ -229,6 +231,8 @@ model AuthRefreshToken {
   @@unique([sessionId, generation])
 }
 model AuthChallenge {
+  destinationHash String @default("")
+  credentialVersion Int @default(0)
   id String @id @default(uuid()) @db.Uuid
   userId String @db.Uuid
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -409,4 +413,56 @@ model StorageCleanupJob {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   @@index([namespace, nextAttemptAt])
+}
+
+// No User before registration OTP. Only validated profile and Argon2 hash in payload.
+model RegistrationChallenge {
+  id String @id @default(uuid()) @db.Uuid
+  identityHash String
+  payload Json?
+  codeHash String
+  attempts Int @default(0)
+  sentAt DateTime @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([createdAt])
+  @@index([identityHash])
+}
+enum AuthLinkPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+model AuthLink {
+  id String @id @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose AuthLinkPurpose
+  hash String @unique
+  emailHash String
+  credentialVersion Int
+  createdAt DateTime
+  expiresAt DateTime
+  consumedAt DateTime?
+  emailIntent AuthEmailIntent?
+  @@index([userId, purpose])
+  @@index([expiresAt])
+}
+
+// Every neutral email request follows this same durable, encrypted queue path.
+model AuthEmailIntent {
+  namespace String @default("")
+  id String @id @default(uuid()) @db.Uuid
+  emailCiphertext String
+  purpose AuthLinkPurpose
+  linkId String? @unique @db.Uuid
+  link AuthLink? @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lockedUntil DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  @@index([namespace, completedAt, nextAttemptAt])
+  @@index([expiresAt])
 }

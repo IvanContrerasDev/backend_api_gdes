@@ -1,7 +1,7 @@
 # Estado actual — leader
 
-F-007 cerrada/aprobada:135/135, build/lint/Prisma,9migracionesvacías y smokeDockerSDK repetido por reviewer. Catálogo público ratificado y solo provincias/enums. F009/proveedores/aprobación ya cerrados con commits locales. Sin push.
+F-001–F-007 y F-009 cerradas; F-008A registro/email/recuperación/Google y proveedores aprobados por revisión independiente:160/160, build/lint/Prisma y doce migraciones+seed vacías. Sin observaciones técnicas abiertas. Commits locales, sin push.
 
-F-008A in_progress spec/plan008-employee-auth; implementer_providers toma exclusividad fuente/schema/package/build/tests tras commitF007. C preparado, consulta humana pendiente de renovar enlace administrativo vencido tras nueva verificaciónemail, sin inferir aprobación. Propuestas comunes esperan sync externo.
+F-008 activa en docs/tasks/008-admin-access.md y plan. Implementer_next tomará exclusividad source/schema/package/build/tests para C tras commitA. Renovación vencida ratificada: nueva verificación email, misma solicitud y enlace nuevo7d; sin duplicados mientras vigente. No quedan decisiones humanas pendientes. Propuestas comunes esperan incorporación/sync externo.
 
-Watcher gdes-api pausado; DBtestgdes-f003-test55433 descartable; postgresusuario intacto. Reanudar watcher/eliminar DB al finalizar. No modificar DBusuario.
+Watcher gdes-api pausado; PostgreSQL pruebas gdes-f003-test55433 descartable. Base/volúmenes del usuario intactos. Reanudar API y eliminar DB de pruebas al finalizar. No push ni migraciones sobre DB del usuario.

@@ -124,7 +124,7 @@
         "backend"
       ],
       "estado": "in_progress",
-      "taskSpec": "docs/tasks/008-employee-auth.md",
+      "taskSpec": "docs/tasks/008-admin-access.md",
       "criterios": [
         "2FA por email en login admin (código 6 dígitos, 10 min, 5 intentos)",
         "Login mobile con identifier+password exige OTP WhatsApp tras validar credenciales (202 + challengeId; tokens solo vía /auth/otp/verify)",
@@ -134,7 +134,7 @@
         "Recuperación con token de un solo uso; flujo admin-access-request con emails y links firmados aprobar/rechazar (Resend)",
         "Providers Email/WhatsApp con implementación log en dev"
       ],
-      "implementation": "Base OTP/2FA y adaptadores reales Resend/Meta aprobados. Pendientes registro/email/recovery/Google y solicitud admin."
+      "implementation": "OTP/2FA, Resend/Meta, registro/verificación email, recuperación y Google aprobados. En implementación solicitud administrativa y decisión firmada."
     },
     {
       "id": "F-009",

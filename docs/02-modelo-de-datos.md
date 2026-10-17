@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; incluye AttendanceEvent/AttendanceRecord/Interval; incluye Timesheet como persistencia para métricas mensuales; incluye Document/uploads y StorageCleanupJob; flujos de registro/recuperación/solicitud admin aún pendientes. OtpPurpose.LOGIN ya existe; ReviewStatus/IntervalReviewStatus sin REJECTED; AdminRequestStatus lo conserva. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; incluye AttendanceEvent/AttendanceRecord/Interval; incluye Timesheet como persistencia para métricas mensuales; incluye Document/uploads y StorageCleanupJob; registro/recuperación/Google implementados y aprobados; solicitud admin pendiente. OtpPurpose.LOGIN ya existe; ReviewStatus/IntervalReviewStatus sin REJECTED; AdminRequestStatus lo conserva. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -182,14 +182,13 @@ Sí se puede eliminar (con confirmación en UI, §40.5). No se vincula técnicam
 
 ### Tablas de auth
 
-**Implementación actual F-002:** AuthSession (userId, cliente MOBILE/ADMIN, rol, secreto CSRF, rememberSession, vencimiento, revocación, createdAt); AuthRefreshToken (hash PK, sessionId, generación única por sesión, expiresAt, usedAt); AuthChallenge (userId, cliente/propósito, hash OTP, vínculo preauth, rememberSession, attempts, expiresAt, sentAt, consumedAt); AuthRateLimit (key HMAC, contador, resetsAt). Estas tablas técnicas usan fechas explícitas del ciclo de autenticación; no se presupone updatedAt genérico. El esquema soporta solo LOGIN/ADMIN_2FA actualmente. Los siguientes nombres/campos de otros flujos siguen siendo diseño futuro, no tablas ya disponibles:
+Persistencia implementada: AuthSession (usuario/cliente/rol/CSRF/remember/vencimiento/revocación), AuthRefreshToken (HMAC/generación/uso), AuthChallenge (LOGIN/GOOGLE_LOGIN/ADMIN_2FA, OTP hash, contacto destinationHash, credentialVersion, preauth, intentos/fechas), AuthRateLimit (keyHMAC/contador/ventana). User.credentialVersion invalida challenges previos sin adquirirlos al cambiar credenciales. Fechas técnicas explícitas; no se presupone updatedAt genérico.
 
+RegistrationChallenge separado: perfil validado+passwordHash temporal, hashOTP, attempts/expiry/sent/consumed/createdAt; sin User antes del OTP y payload null al consumo, retenciónmáxima72h. AuthLink EMAIL_VERIFICATION24h/PASSWORD_RESET1h contiene userId, hash del token, emailHash, credentialVersion, createdAt/expiresAt/consumedAt. No existen tablas OtpCode/EmailVerificationToken/PasswordResetToken con los nombres del diseño inicial.
 
-- `RefreshToken`: id, userId, tokenHash, expiresAt, rotatedAt?, revokedAt?, replacedById? — rotación con detección de reuso.
-- `OtpCode`: id, userId? (null en registro, donde el usuario todavía no existe), codeHash, purpose (`REGISTER` / `LOGIN` / `GOOGLE_LOGIN` / `ADMIN_2FA`), channel (`WHATSAPP` / `EMAIL`), payload json? (datos del registro hasta verificar), expiresAt, attempts, consumedAt?.
-- `EmailVerificationToken`: id, userId, tokenHash, expiresAt (24 h ratificadas), consumedAt? — magic link de verificación de email, un solo uso.
-- `PasswordResetToken`: id, userId, tokenHash, expiresAt, consumedAt? — un solo uso.
-- `AdminAccessRequest`: id, userId, status (`PENDING` / `APPROVED` / `REJECTED`), decisionTokenHash (links firmados del email al SuperAdmin), expiresAt (7 días), decidedAt?, decidedBy?. Una solicitud pendiente se cancela si la cuenta pasa a INACTIVE; representación persistida de cancelación pendiente de definir. Payload pre-verificación separado, retenido máximo 72 h; no crea cuenta ni modifica rol antes de OTP email.
+AuthEmailIntent persiste email cifrado AES256-GCM, purpose, linkId opcional, namespace de clave/configuración, intentos/nextAttemptAt/lockedUntil/completedAt/expiresAt. En registro se crea junto a User/consumoOTP/link. En endpoints neutros se crea sin lookup de usuario; worker resuelve elegibilidad y prepara una sola vez el enlace. Token firmado solo reconstruido a partir de metadatos, nunca almacenado en claro. Lease/fencing evita que un worker anterior cambie el resultado de una reclamación posterior.
+
+AdminAccessRequest y challenge administrativo siguen pendientes F-008C: decisión PENDING/APPROVED/REJECTED7días; cancelación persistida por INACTIVE y renovación tras nueva prueba email ya ratificadas. No crean/cambian rol antes de OTP. Detalle normativo en03/04 y spec activo.
 
 ## Enums (definición central — cierra los pendientes de spec §89)
 

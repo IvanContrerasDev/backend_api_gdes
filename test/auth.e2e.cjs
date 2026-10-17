@@ -1,3 +1,5 @@
+const { acquireAuthSuiteMutex } = require('./auth-suite-mutex.cjs');
+let releaseAuthMutex;
 require('reflect-metadata');
 const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
@@ -78,6 +80,7 @@ async function adminLogin(rememberSession = false) {
 
 const base = 'http://127.0.0.1:33444/api/v1';
 before(async () => {
+  releaseAuthMutex = await acquireAuthSuiteMutex(process.env.TEST_DATABASE_URL);
   const site = await db.site.findFirstOrThrow();
   const passwordHash = await argon2.hash('legacy pass');
   for (const role of ['EMPLOYEE', 'ADMIN', 'TO_BE_ADMIN'])
@@ -143,6 +146,7 @@ after(async () => {
   server?.kill();
   await db.user.deleteMany({ where: { id: { in: users.map((u) => u.id) } } });
   await db.$disconnect();
+  if (releaseAuthMutex) await releaseAuthMutex();
 });
 test('web CSRF bootstrap creates secure preauth cookie without authenticated session', async () => {
   const r = await fetch(base + '/auth/web/csrf');

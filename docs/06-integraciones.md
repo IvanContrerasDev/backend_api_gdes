@@ -1,6 +1,6 @@
 # 06 — Integraciones externas
 
-**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage R2 implementado y aprobado por revisión independiente; Google aún no implementado. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
+**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage R2 implementado y aprobado por revisión independiente; Google implementado y aprobado. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
 
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 
@@ -44,7 +44,7 @@ Interfaz actual: `upload({key,path,size,contentType})`, `delete(key)`, `getSigne
 ## 4. Google OAuth
 
 - Mobile usa Authorization Code + PKCE (`expo-auth-session`) contra los endpoints de Google.
-- El backend solo **verifica el `id_token`** (librería `google-auth-library`): signature, expiración y `aud === GOOGLE_CLIENT_ID`. No hay flujo server-side propio ni refresh tokens de Google.
+- El backend solo **verifica el `id_token`** (librería `google-auth-library`): signature, issuer, expiración estricta, email_verified=true y aud string exactamente GOOGLE_CLIENT_ID. No hay flujo server-side propio ni refresh tokens de Google.
 - Config: `GOOGLE_CLIENT_ID`.
 
 ## Resumen de dependencias externas a provisionar antes del deploy
@@ -61,3 +61,5 @@ Interfaz actual: `upload({key,path,size,contentType})`, `delete(key)`, `getSigne
 Verificación actual de adaptadores: build/lint y105/105 pruebas completas, incluidas8 de providers, por implementer y reviewer independientes. Transporte HTTP simulado/loopback; producción operativa y entrega real permanecen por validar con servicios provisionados.
 
 Verificación de archivos: suite conjunta135/135 (archivos30), build/lint/Prisma, nueve migraciones+seed desde DBvacía, imagen gdes-f007-review:local(74d8a89595c1) y smoke repetido por reviewer. SDK real carga/descarga firma900s/bytes/borrado204 frente a S3simulado, catálogo público200/guards401. Sin cuentas R2 reales ni modificaciones a base/volúmenes del usuario.
+
+Auth avanzado usa intención email durable cifrada, namespace/fencing y enlaces reconstruidos con key/cuerpo estables para reintentos; detalles operativos y rotación en04. Las respuestas neutras y registro202 no esperan al proveedor; un fallo diferido no revierte el usuario ni pierde la intención. Tres intentos máximos por intención dentro del TTL, sin garantía de entrega. No mezclar con OTP WhatsApp síncrono.

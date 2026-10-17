@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log dev/test y adaptadores Resend/Meta por configuración. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; dashboard mensual implementado y aprobado; planillas/documentos/R2 implementados y aprobados; auth avanzada pendiente. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log dev/test y adaptadores Resend/Meta por configuración. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; dashboard mensual implementado y aprobado; planillas/documentos/R2 implementados y aprobados; registro, emailverify, recuperación y Google implementados y aprobados; solicitud admin pendiente. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -82,16 +82,16 @@ Registro de empleado desde mobile. Request:
   "phone": "...", "employeeId": "...", "dni": "...", "address": "...",
   "siteId": "<uuid>", "birthDate": "YYYY-MM-DD" }
 ```
-Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`OtpCode.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
+Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`RegistrationChallenge.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
 
 ### GET /auth/email/verify
 Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso; TTL ratificado 24 h, ver 04). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
 
 ### POST /auth/email-verification/resend
-Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Reenvía el email de verificación solo si la cuenta existe y sigue sin verificar.
+Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Encola siempre la misma intención neutral; el worker envía solo a EMPLOYEE ACTIVE existente y aún sin verificar. No espera al proveedor para responder.
 
 ### POST /auth/password-recovery
-Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Envía email con enlace/token (1 h, un solo uso).
+Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Encola una intención neutral; worker envía a cuenta ACTIVE existente el enlace de1h/un solo uso, sin esperar al proveedor en la respuesta.
 
 ### POST /auth/password-reset
 Request: `{ "token": string, "newPassword": string }` → 200 `{ "data": { "updated": true } }`. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`, 422 `VALIDATION_ERROR` (política de contraseña).
@@ -254,7 +254,7 @@ Estructura cerrada tras revisión independiente: build/lint y 8/8 pruebas HTTP/P
 
 ## Implementación auth base
 
-Las rutas de password-login y sesiones de 04 están registradas bajo `/api/v1/auth`; OTP/2FA obligatorio, sin bypass. Registro, Google, magic link, password-recovery/reset y admin-access-request siguen pendientes F-008. `/auth/otp/verify` acepta solo LOGIN en esta etapa; no simula REGISTER/GOOGLE_LOGIN.
+Las rutas de password-login y sesiones de 04 están registradas bajo `/api/v1/auth`; OTP/2FA obligatorio, sin bypass. Registro, Google, magic link y password-recovery/reset implementados y aprobados F-008A; admin-access-request pendiente F-008C. `/auth/otp/verify` admite LOGIN/GOOGLE_LOGIN con tokens200 y REGISTER202 sin tokens. Detalle de destinos, revocación y cola neutral en04.
 
 Web exige bootstrap GET csrf y Origin/X-CSRF-Token para login/2FA y mutaciones, refresh solo cookie, access solo JSON; GET csrf después de autenticar obtiene token de sesión renovado. Login ADMIN con sesión activa requiere logout previo. Mobile refresh responde únicamente tokens. Logout mobile revoca sesión del access; web revoca cadena de cookie. Errores de parser JSON 400 se traducen al español, sin alterar ApiException de dominio. Auth incluye no-store aun en errores. Verificación HTTP/DB y entorno en test/README.md; no equivale a pruebas de navegador ni proveedores reales.
 

@@ -87,7 +87,7 @@ class EnvironmentVariables {
   ADMIN_FRONTEND_URL!: string;
 
   @IsString()
-  @IsNotEmpty()
+  @Matches(/^[a-z][a-z0-9+.-]*$/)
   MOBILE_DEEP_LINK_SCHEME!: string;
 
   @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
@@ -101,6 +101,9 @@ class EnvironmentVariables {
   @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
   @Matches(/^[a-z]{2,3}(?:_[A-Z]{2})?$/)
   WHATSAPP_TEMPLATE_LANGUAGE!: string;
+
+  @IsUrl({ require_tld: false, protocols: ['http', 'https'], require_protocol: true })
+  API_PUBLIC_URL!: string;
 
   /** Dev switch: providers log to console instead of calling external services. */
   @IsString()
@@ -130,6 +133,7 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     EMAIL_PROVIDER: 'log',
     WHATSAPP_PROVIDER: 'log',
     PORT: '3000',
+    API_PUBLIC_URL: 'http://localhost:3000',
     ...config,
   };
 
@@ -149,11 +153,24 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
   if (validated.JWT_ACCESS_SECRET === validated.JWT_REFRESH_SECRET) {
     throw new Error('JWT access and refresh secrets must be distinct');
   }
+  const apiUrl = new URL(validated.API_PUBLIC_URL);
+  if (
+    apiUrl.username ||
+    apiUrl.password ||
+    apiUrl.pathname !== '/' ||
+    apiUrl.search ||
+    apiUrl.hash
+  ) {
+    throw new Error('API_PUBLIC_URL must be a pure origin without credentials/path/query/hash');
+  }
   if (validated.NODE_ENV === 'production') {
     if (validated.EMAIL_PROVIDER === 'log' || validated.WHATSAPP_PROVIDER === 'log') {
       throw new Error(
         'Log notification providers are not implemented for production; select real notification providers',
       );
+    }
+    if (!config.API_PUBLIC_URL || apiUrl.protocol !== 'https:') {
+      throw new Error('API_PUBLIC_URL requires explicit HTTPS in production');
     }
     if (new URL(validated.ADMIN_FRONTEND_URL).protocol !== 'https:') {
       throw new Error('ADMIN_FRONTEND_URL requires HTTPS in production');
