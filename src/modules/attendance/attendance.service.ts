@@ -203,7 +203,9 @@ export class AttendanceService {
               recordStatus: intervals.every((i) => i.intervalStatus === 'CLOSED')
                 ? 'COMPLETE'
                 : 'INCOMPLETE',
-              ...(pending || outOfOrder ? { reviewStatus: 'PENDING' } : {}),
+              ...(pending || outOfOrder || record.reviewStatus === 'APPROVED'
+                ? { reviewStatus: 'PENDING' }
+                : {}),
             },
           });
           return {
