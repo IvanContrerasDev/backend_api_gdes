@@ -1,7 +1,7 @@
 # Estado actual — leader
 
-F-001–F-007 y F-009 cerradas; F-008A registro/email/recuperación/Google y proveedores aprobados por revisión independiente:160/160, build/lint/Prisma y doce migraciones+seed vacías. Sin observaciones técnicas abiertas. Commits locales, sin push.
+Sin features activas del MVP: F-001–F-009 done, con revisión técnica independiente aprobada. Evidencia vigente:190/190, build/lint/Prisma,14migraciones+seed6, imagen targetproduction5e707dffb47a y smokeproduction health/catalog200/protegido401 sin envíos reales. Contratos/decisiones/evidencia consolidados en docs01–07 y testREADME; sin tasks/revisiones técnicas abiertas. Commits locales, sin push.
 
-F-008 activa en docs/tasks/008-admin-access.md y plan. Implementer_next tomará exclusividad source/schema/package/build/tests para C tras commitA. Renovación vencida ratificada: nueva verificación email, misma solicitud y enlace nuevo7d; sin duplicados mientras vigente. No quedan decisiones humanas pendientes. Propuestas comunes esperan incorporación/sync externo.
+Pendientes de integración/despliegue externos al código aprobado: incorporar y verificar sync de propuestas comunes, provisionar servicios/roles/orígenes reales y probar apps/navegadores. No editar otros repos ni SYNCED por iniciativa. Tres avisos conocidos de Prisma documentados en01; no se introdujeron alertas nuevas de dependencias.
 
-Watcher gdes-api pausado; PostgreSQL pruebas gdes-f003-test55433 descartable. Base/volúmenes del usuario intactos. Reanudar API y eliminar DB de pruebas al finalizar. No push ni migraciones sobre DB del usuario.
+Entorno restaurado: DBdescartable gdes-f003-test55433 y contenedores/auxiliares de smoke eliminados; gdes-api reanudado y gdes-postgres del usuario continúa saludable. Base/volúmenes usuario intactos. Para prueba manual actualizar dependencias/client y migraciones siguiendo README; no se aplican aquí sobre DBusuario. Sin push.

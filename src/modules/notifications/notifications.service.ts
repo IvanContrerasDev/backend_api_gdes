@@ -151,7 +151,7 @@ export class LogNotifications implements EmailProvider, WhatsAppProvider {
   }
   async sendEmail(input: EmailInput): Promise<void> {
     const code =
-      input.subject === 'Código de acceso GdeS'
+      ['Código de acceso GdeS', 'Verificá tu solicitud de acceso GdeS'].includes(input.subject)
         ? /<strong>(\d{6})<\/strong>/.exec(input.html)?.[1]
         : undefined;
     this.logger.log(`Development email recipient=[redacted]${code ? ` code=${code}` : ''}`);

@@ -1,6 +1,6 @@
 # 04 — Autenticación y seguridad
 
-**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; Resend/Meta implementados, log bloqueado en producción. Registro, magic link, recuperación y Google implementados y aprobados; solicitud admin pendiente. Adaptadores reales de notificación implementados/aprobados; requieren provisionamiento externo. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
+**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; Resend/Meta implementados, log bloqueado en producción. Registro, magic link, recuperación y Google implementados y aprobados; solicitud admin implementada y aprobada. Adaptadores reales de notificación implementados/aprobados; requieren provisionamiento externo. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
 
 ## Tokens
 
@@ -56,7 +56,7 @@
 
 ### 6. Alta de administradores
 
-Flujo completo y DTOs en 03 (Solicitud admin): diez campos, challenge email antes de crear cuenta/cambiar rol, contraseña actual para existentes y perfil conservado. OTP 10 min/5 intentos/cooldown 60 s, payload temporal 72 h. Tras verificar se crea solicitud PENDING y se envían correos; decisión de un solo uso 7 días, GET solo muestra UI y POST confirma. Cuenta que pasa a INACTIVE cancela solicitud. No fusionar identidades ni degradar administradores.
+Flujo completo y DTOs en 03 (Solicitud admin): diez campos, challenge email antes de crear cuenta/cambiar rol, contraseña actual para existentes y perfil conservado. OTP 10 min/5 intentos/cooldown 60 s, payload temporal 72 h. Tras verificar se crea solicitud PENDING y se envían correos; decisión de un solo uso 7 días, GET solo muestra UI y POST confirma. Cuenta que pasa a INACTIVE cancela solicitud. No fusionar identidades ni degradar administradores. Regla ratificada: vencidaPENDING puede renovar enlace7d con NUEVAOTP sin cambiarid; tras rechazo/cancelación puede crear solicitud nueva con otraOTP y contraseña actual, cuentaACTIVE/rol elegible e historial intacto. Replay de challenge antiguo no renueva ni postula otra vez.
 
 ### Seguridad web aprobada para desarrollo y pruebas
 
@@ -113,3 +113,13 @@ Reset bloquea User→Link/sesiones, incrementa User.credentialVersion y consume 
 Resend de verificación y recovery encolan una intención equivalente por cada email válido antes de202; no consultan identidad ni esperan proveedor de forma condicional. Worker procesa fuera de la respuesta y comprueba elegibilidad. Destinatario AES256-GCM cifrado; bearer no persistido, reconstruido idéntico desde metadatos del enlace. Intentos máximos3, lease60s con fencing, ciclo250ms/lote20 y TTL1h/24h. Namespace de clave/orígenes/proveedor/from aísla configuraciones: al rotar, drenar configuración anterior o solicitar enlace nuevo; no migra trabajos antiguos. Purga al iniciar y mientras proceso activo. Aceptación del proveedor no certifica entrega ni exactly-once.
 
 Google usa google-auth-library10.5.0: firma, issuer, aud string exacto, exp estricto y email_verified=true. Solo EMPLOYEE ACTIVE existente con email local verificado; sin alta/fusión/cambio de perfil. El campo phone de entrada se valida, pero el OTP se envía exclusivamente al teléfono registrado. La verificación Google no sustituye OTP ni verificación local del email. Pruebas incluyen SDK real con RSA offline, sin cuentas externas.
+
+## Solicitudes administrativas — implementación F-008C aprobada
+
+AdminAccessChallenge separado guarda perfil/Argonhash, resultado seguro de política y prueba de hash/generación de credencial existente; jamás contraseña plana. Inicial verifica contra hash existente o dummy y crea hash temporal en ambos casos. La elegibilidad y los conflictos solo se revelan trasOTP. Retención72h desde creación, no extensible por resend, purga al inicio/cada60s y payloadnull al consumir. El OTP inicial/reenvío usa EmailProvider; recepción/decisión/resultado se encolan en la transacción de negocio.
+
+Verify toma Challenge→lock de identidad normalizada→User→Request. Nuevo crea TO_BE_ADMIN; existente conserva perfil/password. Cambio de rol incrementa credentialVersion y revoca User→sesiones sin bloquear otros challenges. Revalida OTP después de esperas/índice único y antes de consumir; fallo tardío revierte User/request/notificaciones. Confirm toma User→Request y revisa hash/generación/email/estado/rol/expiry tras locks. Trigger de transición INACTIVE cancelaPENDING en el mismo commit; reactivación no revive token. No hay decidedBy ficticio: el token público no identifica a la persona que confirmó.
+
+Una solicitud por usuario puede tener varios antecedentes, con índice parcial que permite soloPENDING no cancelada. Renovación tras nuevaOTP conservaid y aumenta decisionGeneration; re-postulación tras rechazo/cancelación usaidnuevo. Ambas exigen prueba vigente y cuentaACTIVE/rol elegible; replay consumido no dispara ninguna.
+
+AdminAccessNotification persiste intención por request/generación/tipo/destinatario. Token ADMIN_DECISION7d HS256 domain-separated/hashDB; notificación reconstruye los mismos claims/iat/exp/jti, HTML escapado y clave de idempotencia. Sin bearer en claro, acceptedAt registra aceptación y no entrega. Namespace de secreto/configuración, lease60s/fencing e intentosmáximos3, ciclo250ms/lote20; TTL del envío≤24h y del enlace, acorde ventana de idempotencia de Resend. Elegibilidad se comprueba antes de enviar; solicitudes canceladas/renovadas o destinatarios fuera del rol no reciben capacidades pendientes. Configuración nueva no procesa jobs de otro namespace; no se promete entrega exactamenteuna vez. Requerimientos externos de dominio/plantilla/client y navegador siguen separados de la verificación técnica.

@@ -1,3 +1,7 @@
+import { AdminAccessController } from './admin-access.controller';
+import { AdminAccessService } from './admin-access.service';
+import { AdminAccessNotificationsService } from './admin-access-notifications.service';
+import { AdminDecisionTokensService } from './admin-decision-tokens.service';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -16,9 +20,12 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 @Module({
   imports: [JwtModule.register({}), NotificationsModule],
-  controllers: [AuthController, AuthAdvancedController],
+  controllers: [AuthController, AuthAdvancedController, AdminAccessController],
   providers: [
     AuthService,
+    AdminAccessService,
+    AdminAccessNotificationsService,
+    AdminDecisionTokensService,
     JwtAuthGuard,
     AuthRegistrationService,
     AuthLinksService,

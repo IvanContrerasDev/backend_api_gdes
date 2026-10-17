@@ -53,6 +53,7 @@ Interfaz actual: `upload({key,path,size,contentType})`, `delete(key)`, `getSigne
 2. App de Meta + número de WhatsApp Business + plantilla OTP aprobada.
 3. Cuenta Cloudflare + bucket R2 + API token con permisos de lectura/escritura acotados al bucket.
 4. `GOOGLE_CLIENT_ID` (Google Cloud Console, OAuth client para la app Expo).
+5. Antes de habilitar solicitudes administrativas, provisionar al menos un SUPER_ADMIN ACTIVE con email operativo. Los destinatarios de decisión se seleccionan al crear la intención; no se crea un superadmin ni una contraseña universal automáticamente.
 
 ## Fallos y validación de notificaciones
 
@@ -63,3 +64,7 @@ Verificación actual de adaptadores: build/lint y105/105 pruebas completas, incl
 Verificación de archivos: suite conjunta135/135 (archivos30), build/lint/Prisma, nueve migraciones+seed desde DBvacía, imagen gdes-f007-review:local(74d8a89595c1) y smoke repetido por reviewer. SDK real carga/descarga firma900s/bytes/borrado204 frente a S3simulado, catálogo público200/guards401. Sin cuentas R2 reales ni modificaciones a base/volúmenes del usuario.
 
 Auth avanzado usa intención email durable cifrada, namespace/fencing y enlaces reconstruidos con key/cuerpo estables para reintentos; detalles operativos y rotación en04. Las respuestas neutras y registro202 no esperan al proveedor; un fallo diferido no revierte el usuario ni pierde la intención. Tres intentos máximos por intención dentro del TTL, sin garantía de entrega. No mezclar con OTP WhatsApp síncrono.
+
+Solicitudes administrativas (implementadas y aprobadas): correos OTP inicial/reenvío por EmailProvider, y recepción/decisión/resultado por outboxDB transaccional. Links de frontend fijos con confirmaciónPOST, HTML escapado; snapshot estable de contenido y clave por generación/recipient, hasta3 intentos y TTLmáximo24h (respetando idempotenciaResend), no siete días de reenvíos automáticos. Persistir acceptedAt solo tras aceptación; no equivale a entrega. Sin correos reales durante pruebas. Detalles de cancelación/renovación/re-postulación y namespaces en04.
+
+Modo log de desarrollo: muestra OTP únicamente para los asuntos conocidos de login2FA y verificación de solicitud administrativa, con destinatario redactado. No imprime HTML, enlaces de verificación/recuperación/decisión ni bearer tokens. Para probar manualmente esos enlaces hace falta configurar email real del entorno; las suites usan captura por DI y no relajan esta regla productiva.

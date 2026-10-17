@@ -27,6 +27,8 @@ model User {
   authSessions AuthSession[]
   authChallenges AuthChallenge[]
   authLinks AuthLink[]
+  adminAccessRequests AdminAccessRequest[]
+  adminAccessNotifications AdminAccessNotification[]
   credentialVersion Int @default(0)
   passwordHash  String
   phone         String
@@ -463,6 +465,67 @@ model AuthEmailIntent {
   completedAt DateTime?
   createdAt DateTime @default(now())
   expiresAt DateTime
+  @@index([namespace, completedAt, nextAttemptAt])
+  @@index([expiresAt])
+}
+
+model AdminAccessChallenge {
+  id String @id @default(uuid()) @db.Uuid
+  identityHash String
+  payload Json?
+  codeHash String
+  attempts Int @default(0)
+  sentAt DateTime @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  requestId String? @db.Uuid
+  request AdminAccessRequest? @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  @@index([identityHash])
+  @@index([createdAt])
+}
+model AdminAccessRequest {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status AdminRequestStatus @default(PENDING)
+  cancelledAt DateTime?
+  decidedAt DateTime?
+  emailHash String
+  decisionGeneration Int @default(1)
+  decisionJti String @db.Uuid
+  decisionTokenHash String @unique
+  decisionIssuedAt DateTime
+  decisionExpiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  challenges AdminAccessChallenge[]
+  notifications AdminAccessNotification[]
+  @@index([userId, createdAt])
+}
+enum AdminNotificationKind {
+  RECEIPT
+  DECISION
+  RESULT
+}
+model AdminAccessNotification {
+  id String @id @default(uuid()) @db.Uuid
+  requestId String @db.Uuid
+  request AdminAccessRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipientId String @db.Uuid
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  generation Int
+  kind AdminNotificationKind
+  namespace String
+  payload Json
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  lockedUntil DateTime?
+  acceptedAt DateTime?
+  completedAt DateTime?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  @@unique([requestId, generation, kind, recipientId])
   @@index([namespace, completedAt, nextAttemptAt])
   @@index([expiresAt])
 }

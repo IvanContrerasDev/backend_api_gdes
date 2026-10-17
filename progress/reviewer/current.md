@@ -1,3 +1,3 @@
 # Estado actual — reviewer
 
-Sin revisión activa. F007 aprobada sin hallazgos; evidencia consolidada01/02/03/06 y testREADME. Próximo bloque AuthA.
+Sin revisión técnica pendiente. Evidencia y límites de verificación consolidados en docs01–07 y test/README.md.

@@ -316,3 +316,25 @@ test('DI selects mixed modes with fake transport and real adapters do not log se
     if (app) await app.close();
   }
 });
+
+test('development email exposes only approved OTP codes while redacting recipients, HTML, and decision or magic-link capabilities', async () => {
+  const provider = new providers.LogNotifications(new ConfigService({ NODE_ENV: 'test' }));
+  const logs = [];
+  provider.logger = { log(message) { logs.push(message); } };
+  for (const subject of ['Código de acceso GdeS', 'Verificá tu solicitud de acceso GdeS']) {
+    logs.length = 0;
+    await provider.sendEmail({ to: 'private-recipient@example.com', subject, html: '<html><strong>731842</strong></html>' });
+    assert.equal(logs.length, 1);
+    assert.match(logs[0], /recipient=\[redacted\] code=731842$/);
+    assert.doesNotMatch(logs[0], /private-recipient|example\.com|<|>/);
+  }
+  for (const subject of ['Solicitud de acceso administrativo GdeS', 'Confirmá tu email en GdeS', 'Restablecé tu contraseña GdeS', 'Un asunto sin permiso']) {
+    logs.length = 0;
+    await provider.sendEmail({ to: 'private-recipient@example.com', subject,
+      html: '<strong>731842</strong><a href="https://admin.example.com/admin-access/confirm?token=secret-bearer-capability&decision=APPROVE">Aprobar</a>' });
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0], 'Development email recipient=[redacted]');
+    assert.doesNotMatch(logs.join('\n'), /731842|secret-bearer|token=|private-recipient|<|>/);
+  }
+  assert.throws(() => new providers.LogNotifications(new ConfigService({ NODE_ENV: 'production' })), /not implemented for production/);
+});

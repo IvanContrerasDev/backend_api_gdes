@@ -31,7 +31,7 @@
 | 409 | `USER_ALREADY_EXISTS` | false | Email duplicado |
 | 409 | `EMPLOYEE_ID_ALREADY_EXISTS` | false | Legajo duplicado |
 | 409 | `DNI_ALREADY_EXISTS` | false | DNI duplicado |
-| 409 | `REQUEST_ALREADY_DECIDED` | false | Solicitud admin ya resuelta |
+| 409 | `REQUEST_ALREADY_DECIDED` | false | Solicitud admin ya resuelta o cancelada |
 | 410 | `OTP_EXPIRED` / `TOKEN_EXPIRED` | false | Código/token vencido |
 | 422 | `VALIDATION_ERROR` | false | Error de validación de campos |
 | 422 | `INVALID_TIMESTAMP` | false | Timestamp offline inválido o adelanto de clientSentAt >2min; contrato implementado en05 |
@@ -44,7 +44,7 @@
 | 503 | `STORAGE_UNAVAILABLE` | true | Operación de almacenamiento fallida/ambigua, recuperable sin exponer datos upstream |
 | 409 | `FILE_VERSION_CONFLICT` | false | Reemplazo de planilla con expectedVersion desactualizado |
 
-El catálogo combina códigos implementados y previstos: disponibilidad por dominio en03. Asistencia/estructura/users y registros admin tienen implementación; solicitud admin sigue pendiente F-008. ApiException acepta strings y no valida pertenencia al catálogo. Nuevos códigos requieren documentar el contrato común y este catálogo.
+El catálogo combina códigos implementados y previstos: disponibilidad por dominio en03. Asistencia/estructura/users y registros admin tienen implementación; solicitud admin implementada y aprobada F-008. ApiException acepta strings y no valida pertenencia al catálogo. Nuevos códigos requieren documentar el contrato común y este catálogo.
 
 | HTTP | code | retryable | Uso |
 |---|---|---|---|

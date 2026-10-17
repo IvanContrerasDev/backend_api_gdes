@@ -1,0 +1,13 @@
+# Solicitudes administrativas — renovación de decisión ratificada
+
+Pendiente de incorporación/sync por orchestrator. Destino contrato común Solicitud administrativa.
+
+Humano aprobó renovar enlace vencido7días tras nueva verificaciónOTPemail del solicitante, conservando la misma solicitud. Mientras enlace vigente no duplicar solicitudes ni correos de recepción/decisión. Un replay de challenge consumido no renueva. Revalidar contraseñaactual/identidad/ACTIVE/TO_BE_ADMIN; no reactivar solicitudcancelada/decidida. Renovación genera nuevo token/hash y vencimientoabsoluto7días, invalida anteriores. Generación interna de decisión permite una sola notificación/idempotencia por renovación. Motivo: evitar solicitudes sin vía de resolución al vencer el enlace. Detalle HTTP/backend en03/04 al consolidarF008C.
+
+Detalles de integración del diseño backend vigente (disponibilidad se confirma en03 al cerrar revisión): POST /auth/admin-access/confirm recibe {token,decision:APPROVE|REJECT}, devuelve200 {data:{decision:APPROVED|REJECTED}}. Es ruta pública portadora del token firmado del email, sin JWT de sesión adicional. El GET de frontend ADMIN_FRONTEND_URL/admin-access/confirm solo muestra confirmación; no existe GET backend que decida. Replay/cancelación409 REQUEST_ALREADY_DECIDED, vencido410 TOKEN_EXPIRED e inválido401 INVALID_TOKEN. No ampliar recurso users a roles administrativos para cancelar.
+
+El POST inicial mantiene neutralidad: contraseña sintáctica1–128Unicode para toda identidad; una cuenta existente demuestra su contraseña actual incluso legada. La política de nueva contraseña12–128/corpuslocal se aplica solo trasOTP al crear cuenta nueva, evitando revelar existencia antes de pruebaemail. OTP marca emailVerifiedAt si aún es null, conservando fecha previa y perfil/hash existentes. Las discrepancias noidentitarias se advierten solo después de prueba.
+
+Cancelación por INACTIVE se persiste internamente y no publica un estado CANCELLED nuevo; reactivar no revive solicitud. Las notificaciones durables distinguen aceptación del proveedor de entrega y conservan token/cuerpo/claves de idempotencia por generación, sin bearer persistido. Estos detalles completan los pendientes del contrato sin añadir perfiles ni estados públicos.
+
+Re-postulación ratificada por humano: tras rechazo/cancelación se permite nueva solicitud con freshOTPemail, contraseña actual, cuentaACTIVE y rol elegible. Conservar fila anterior; no reabrir ni renovar decidida/cancelada. Replay de challenge antiguo no postula nuevamente; serializar nuevas pruebas concurrentes para una sola solicitudPENDING/correos. Una solicitudAPPROVED mantiene ADMIN no elegible. Motivo: permitir volver a solicitar acceso sin perder auditoría ni revivir decisiones anteriores.
