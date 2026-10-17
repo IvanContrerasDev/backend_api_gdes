@@ -1,4 +1,15 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Max, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 
@@ -19,20 +30,24 @@ class EnvironmentVariables {
   @IsNotEmpty()
   JWT_REFRESH_SECRET!: string;
 
+  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'resend')
   @IsString()
-  @IsNotEmpty()
+  @Matches(/\S/)
   RESEND_API_KEY!: string;
 
+  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'resend')
   @IsString()
-  @IsNotEmpty()
+  @Matches(/\S/)
   EMAIL_FROM!: string;
 
+  @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
   @IsString()
-  @IsNotEmpty()
+  @Matches(/\S/)
   WHATSAPP_TOKEN!: string;
 
+  @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
   @IsString()
-  @IsNotEmpty()
+  @Matches(/\S/)
   WHATSAPP_PHONE_NUMBER_ID!: string;
 
   @IsString()
@@ -75,13 +90,27 @@ class EnvironmentVariables {
   @IsNotEmpty()
   MOBILE_DEEP_LINK_SCHEME!: string;
 
+  @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
+  @Matches(/^v\d+\.\d+$/)
+  WHATSAPP_API_VERSION!: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
+  @Matches(/^[a-z0-9_]+$/)
+  WHATSAPP_OTP_TEMPLATE_NAME!: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
+  @Matches(/^[a-z]{2,3}(?:_[A-Z]{2})?$/)
+  WHATSAPP_TEMPLATE_LANGUAGE!: string;
+
   /** Dev switch: providers log to console instead of calling external services. */
   @IsString()
   @IsNotEmpty()
+  @IsIn(['log', 'resend'])
   EMAIL_PROVIDER!: string;
 
   @IsString()
   @IsNotEmpty()
+  @IsIn(['log', 'meta'])
   WHATSAPP_PROVIDER!: string;
 
   @IsInt()
@@ -119,6 +148,27 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
 
   if (validated.JWT_ACCESS_SECRET === validated.JWT_REFRESH_SECRET) {
     throw new Error('JWT access and refresh secrets must be distinct');
+  }
+  if (validated.NODE_ENV === 'production') {
+    if (validated.EMAIL_PROVIDER === 'log' || validated.WHATSAPP_PROVIDER === 'log') {
+      throw new Error(
+        'Log notification providers are not implemented for production; select real notification providers',
+      );
+    }
+    if (new URL(validated.ADMIN_FRONTEND_URL).protocol !== 'https:') {
+      throw new Error('ADMIN_FRONTEND_URL requires HTTPS in production');
+    }
+  }
+  if (validated.WHATSAPP_PROVIDER === 'meta' && !/^\d+$/.test(validated.WHATSAPP_PHONE_NUMBER_ID)) {
+    throw new Error('Invalid WHATSAPP_PHONE_NUMBER_ID');
+  }
+  if (
+    validated.EMAIL_PROVIDER === 'resend' &&
+    !/^[^<>\s@]+@[^<>\s@]+(?:\.[^<>\s@]+)+(?:>)?$/.test(
+      validated.EMAIL_FROM.match(/<([^<>]+)>$/)?.[1] ?? validated.EMAIL_FROM,
+    )
+  ) {
+    throw new Error('Invalid EMAIL_FROM');
   }
   return validated;
 }

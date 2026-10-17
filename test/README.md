@@ -25,7 +25,7 @@ docker stop gdes-f003-test
 
 La migración de estructura usa índices PostgreSQL por expresión para garantizar unicidad normalizada de clientes y lugares incluso con requests concurrentes. Esos índices se conservan en SQL porque Prisma no expresa índices por función. La búsqueda usa `unaccent` sin quitar acentos del nombre almacenado; la unicidad normaliza mayúsculas y espacios.
 
-Auth cubre OTP mobile/2FA web, CSRF/Origin, cookies y separación de transporte, límites persistidos, expiración mobile deslizante/web absoluta, logout/reuso/rotación concurrentes y la ausencia de deadlock al desactivar. La suite no certifica aún navegador, proveedores externos ni producción: el boot en NODE_ENV=production rechaza log providers hasta F-008.
+Auth cubre OTP mobile/2FA web, CSRF/Origin, cookies y separación de transporte, límites persistidos, expiración mobile deslizante/web absoluta, logout/reuso/rotación concurrentes y la ausencia de deadlock al desactivar. La suite no certifica aún navegador, proveedores externos ni producción: el boot en NODE_ENV=production rechaza log providers y exige seleccionar Resend/Meta con configuración válida.
 
 No ejecutar un watcher de desarrollo sobre el mismo dist mientras se compila/prueba: el contenedor gdes-api con bind mount recompila automáticamente y puede generar artefactos con otro propietario. Pausar temporalmente ese watcher y reanudarlo al terminar. En sandbox, compilar/lint normalmente y conceder permiso de sockets solo al proceso de tests:
 
@@ -44,3 +44,5 @@ Registros admin cubre DTO exacto, permisos/sesiones, carga manual por día, sola
 La suite también cubre APPROVED→PENDING con una nueva fichada (los tres tipos, origen automático/manual), replay que conserva aprobación y rechazos sin mutación. Verificación conjunta90/90 tras este ajuste.
 
 Dashboard prueba DTO/cero/provincias, período civil/bisiesto/fin año, estados independientes, ausencia por registro, provincia histórica distinta del empleado, inactivos, permisos/query estricta y snapshot concurrente. Timesheet tiene checks/unicidad SQL verificados; suite conjunta97/97 y siete migraciones vacías al cerrar F-009.
+
+Providers prueban validación de configuración, modos mixtos, DI, payloads de Resend/plantilla Meta, headers, idempotencia/reintentos, límites body/timeout y errores sin datos upstream. Transporte fake/loopback sin mensajes reales; suite conjunta105/105 al cerrar este bloque.

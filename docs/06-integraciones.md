@@ -1,12 +1,12 @@
 # 06 — Integraciones externas
 
-**Estado:** interfaces EmailProvider/WhatsAppProvider y adapters log implementados para auth base en desarrollo/test. No hay llamadas reales a Resend/Meta ni storage/Google implementados; producción falla al boot mientras solo haya providers log.
+**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage/Google aún no implementados. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
 
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 
 ## 1. Resend (email) — `EmailProvider`
 
-Interfaz: `sendEmail({ to, subject, html })`. En dev: implementación `log` que escribe en consola (config `EMAIL_PROVIDER=log`).
+Interfaz: `sendEmail({ to, subject, html, idempotencyKey? })`. EMAIL_PROVIDER=log|resend. Log solo dev/test, redacta destinatario y muestra exclusivamente OTP de acceso deliberados. Resend usa POST /emails por HTTPS con Bearer, remitente EMAIL_FROM y transporte fetch por DI; timeout10s cubre headers y body, respuesta máxima16KiB y redirecciones rechazadas. Hasta3 intentos ante429/5xx/red, backoff250/500ms+jitter y misma Idempotency-Key/cuerpo. Una clave de negocio opcional identifica reintentos del mismo envío entre llamadas; si se omite, UUID por llamada. Respuesta con id significa aceptación del proveedor, no entrega al destinatario.
 
 Emails del sistema (spec §9.2/§9.3/§10.2):
 
@@ -21,11 +21,11 @@ Emails del sistema (spec §9.2/§9.3/§10.2):
 
 ## 2. Meta WhatsApp Cloud API — `WhatsAppProvider`
 
-Interfaz: `sendOtp({ phone, code })`. En dev: implementación `log` (config `WHATSAPP_PROVIDER=log`).
+Interfaz: `sendOtp({ phone, code })`. WHATSAPP_PROVIDER=log|meta, independiente del selector email; modo mixto dev/test permitido. Meta usa endpoint HTTPS fijo Graph de versión explícita y plantilla AUTHENTICATION con body y botón copy-code URL index0 (mismo OTP). Un solo intento: timeout/fallo puede representar envío aceptado; sin idempotencia Meta no se promete exactly-once ni se repite automáticamente. El usuario puede pedir reenvío con cooldown existente. Éxito exige messages[0].id; aceptación no certifica entrega.
 
 - Uso: OTP de 6 dígitos en registro de empleado, login con email/legajo + password y login Google (mobile).
 - Requiere app de Meta, número verificado y **plantilla de mensaje** aprobada (los mensajes iniciados por el negocio exigen plantilla). Gestionar alta de la plantilla es tarea operativa previa al deploy.
-- Config: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`.
+- Config: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` numérico, `WHATSAPP_API_VERSION` (vN.N explícita vigente al provisionar), `WHATSAPP_OTP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANGUAGE` (ej.es_AR según plantilla aprobada). No asumir que el nombre/idioma de ejemplo ya existe en Meta.
 
 ## 3. Cloudflare R2 (storage de archivos) — `StorageService`
 
@@ -51,3 +51,9 @@ Interfaz: `upload({ key, body, contentType })`, `delete({ key })`, `getSignedDow
 2. App de Meta + número de WhatsApp Business + plantilla OTP aprobada.
 3. Cuenta Cloudflare + bucket R2 + API token con permisos de lectura/escritura acotados al bucket.
 4. `GOOGLE_CLIENT_ID` (Google Cloud Console, OAuth client para la app Expo).
+
+## Fallos y validación de notificaciones
+
+503 NOTIFICATION_UNAVAILABLE con mensaje español y retryable=true; nunca incluir cuerpo upstream, tokens, destinatarios ni credenciales en errores/logs. Selectores desconocidos/config real incompleta fallan al boot; producción rechaza cualquier log y exige ADMIN_FRONTEND_URL HTTPS. No hay llamadas de red al iniciar. Las pruebas usan transporte HTTP fake/loopback, sin envío a terceros. Fuentes del adaptador: [Resend Send Email](https://resend.com/docs/api-reference/emails/send-email), [idempotencia](https://resend.com/docs/dashboard/emails/idempotency-keys), [colección oficial Meta](https://www.postman.com/meta/whatsapp-business-platform/overview). No se certificó dominio, número/plantilla, entrega real ni despliegue.
+
+Verificación actual de adaptadores: build/lint y105/105 pruebas completas, incluidas8 de providers, por implementer y reviewer independientes. Transporte HTTP simulado/loopback; producción operativa y entrega real permanecen por validar con servicios provisionados.

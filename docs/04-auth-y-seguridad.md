@@ -1,6 +1,6 @@
 # 04 — Autenticación y seguridad
 
-**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; producción bloqueada hasta implementar providers reales F-008. Google, registro, magic link, recuperación y solicitud admin siguen pendientes. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
+**Estado:** auth base implementada y aprobada: login password con OTP mobile/2FA admin, sesiones y JWT, refresh/logout mobile y web, preauth/CSRF. Providers log de desarrollo/test; Resend/Meta implementados, log bloqueado en producción. Google, registro, magic link, recuperación y solicitud admin siguen pendientes. Adaptadores reales de notificación implementados/aprobados; requieren provisionamiento externo. Detalle HTTP en 03; base web ratificada localmente con propuesta común pendiente de sync.
 
 ## Tokens
 
@@ -98,6 +98,6 @@ Rotación toma User → AuthSession; logout solo AuthSession; verificación Chal
 
 Rate limit persistido y atómico (ventana10 min): login por IP100 y por identifier/cliente10; challenges por usuario/cliente10; verify IP200 y usuario/cliente20; resend IP50 y usuario5, además del máximo de cinco intentos por challenge. Reenviar o pedir challenge nuevo no reinicia el límite global de verificación. Valores técnicos para desarrollo, revisar con tráfico real antes del despliegue.
 
-Secrets access/refresh distintos obligatorios al boot. Providers log redactan destinatarios y muestran solo códigos OTP deliberados de desarrollo; no envían mensajes reales. Las suites HTTP/PostgreSQL usan fixtures dedicadas, no credenciales de seed productivo. Validación reproducible en test/README.md; pruebas de navegador/producción son F-010 y no se sustituyen por tests HTTP.
+Secrets access/refresh distintos obligatorios al boot. Providers log redactan destinatarios y muestran solo códigos OTP deliberados de desarrollo; no envían mensajes reales. Adaptadores Resend/Meta implementados por configuración con transporte/errores/reintentos en06; las pruebas no enviaron mensajes reales. Las suites HTTP/PostgreSQL usan fixtures dedicadas, no credenciales de seed productivo. Validación reproducible en test/README.md; pruebas de navegador/producción son F-010 y no se sustituyen por tests HTTP.
 
 Cierre F-002 con revisión independiente aprobada, build/lint y 22/22 pruebas HTTP/PostgreSQL (auth14 + estructura8), sin observaciones técnicas abiertas. Regresión de expiración tras lock User comprueba OTP_EXPIRED sin consumo ni sesión, y JSON malformado conserva BAD_REQUEST español/no-store.
