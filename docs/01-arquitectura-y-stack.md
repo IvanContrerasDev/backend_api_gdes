@@ -26,6 +26,12 @@ Verificación de empaquetado: `docker build --target production -t gdes-backend-
 | Hash de contraseñas | Argon2 | |
 | Validación | `class-validator` + `class-transformer` | DTOs de entrada |
 
+## Preferencias para futuras decisiones de servicios
+
+- **Email y mailings:** preferencia por Resend para conexiones y envíos de correo. Ya figura como proveedor de email en el diseño de integraciones; mantener `EmailProvider` para poder cambiarlo si conviene.
+- **Deploy e infraestructura:** preferencia por evaluar primero Vercel para deploys, servidores, base de datos y gestión de infraestructura, buscando centralizar operación e integraciones con agentes. Es una preferencia no restrictiva: en cada caso comparar costo, facilidad, simplicidad y ajuste técnico con alternativas vigentes, y conversar la decisión con el humano antes de adoptar un servicio nuevo. Explicar también cómo usar Vercel cuando se elija.
+- Estas preferencias no implican que Vercel sea siempre la opción adecuada ni modifican decisiones ya aprobadas para componentes concretos (por ejemplo PostgreSQL y Cloudflare R2); cada nueva decisión se evalúa en su contexto.
+
 ## Arquitectura: monolito modular
 
 Un solo proceso NestJS, un módulo por dominio. Cada módulo tiene controller, service, DTOs y (si aplica) repositorio propio. Los módulos no se importan entre sí salvo a través de servicios públicos explícitos.
