@@ -1,3 +1,4 @@
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -23,6 +24,7 @@ import { HealthController } from './health/health.controller';
     AuthModule,
     UsersModule,
     AttendanceModule,
+    DashboardModule,
   ],
   controllers: [HealthController],
   providers: [

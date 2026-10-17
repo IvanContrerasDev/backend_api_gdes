@@ -2,7 +2,7 @@
 
 Detalle HTTP de diseño vigente. Acuerdos y racional cross-app: `arquitectura/contratos-api.md` (SYNCED). Cambios comunes se proponen al orchestrator.
 
-**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; archivos, dashboard y auth avanzada pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
+**Disponibilidad real:** `GET /health` sin prefijo y estructura bajo `/api/v1`: GET /sites; GET/POST /clients, GET/PUT /clients/{id}, PATCH /clients/{id}/status; rutas equivalentes de workplaces. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE solo obtiene catálogo activo en GET /workplaces, sin paginación, excluyendo clientes inactivos. JWT real obligatorio en estructura, sin ruta de emisión de prueba. Auth base también implementada: login, otp verify/resend, 2fa verify, refresh/logout mobile y web csrf/session/refresh/logout; providers log y bloqueo de producción hasta F-008. Empleados/perfil también implementados (GET/POST /users, GET/PATCH /users/{id}, PATCH account-status, GET /profile). Ingesta/status de asistencia implementados, aprobación independiente completada; registros admin implementados y aprobados tras revisión independiente; dashboard mensual implementado y aprobado; archivos y auth avanzada pendientes. DTOs marcados pendientes aún requieren confirmación antes de integración.
 
 Base URL: `/api/v1`. Todo request/response es JSON salvo los uploads (`multipart/form-data`).
 
@@ -159,12 +159,17 @@ Response: `{ "data": { "id", "firstName", "lastName", "dni", "cuil", "employeeId
 
 ## Admin (roles ADMIN y SUPER_ADMIN; mismas vistas en MVP)
 
-### Dashboard — diseño de ruta aún por reconciliar
-`GET /dashboard/summary` →
+### Dashboard — implementado y aprobado (F-009)
+`GET /dashboard/metrics?month=10&year=2026`, roles ADMIN/SUPER_ADMIN. Ambos parámetros obligatorios: month1–12, year2000–9999, enteros decimales; parámetros desconocidos/repetidos/invalidos422 VALIDATION_ERROR. Sustituye el diseño anterior /dashboard/summary.
+
 ```json
-{ "data": { "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsence": 0 } }
+{ "data": { "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsence": 0,
+  "byProvince": [{ "id": "<uuid>", "name": "Catamarca", "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsence": 0 }] } }
 ```
-Las 4 métricas de spec §47. Período: mes seleccionado; la forma final de la ruta/query se mantiene pendiente en el contrato de F-009, sin inferirla del mock.
+
+El arreglo incluye todas las provincias de Site (seed seis), incluso ceros; orden nombre COLLATE C y UUID. Totales generales coinciden con suma del desglose. Planillas PENDING se cuentan por month/year del período, no createdAt. Registros se cuentan por date civil GMT-3 del mes: INCOMPLETE, reviewStatus PENDING y existencia de al menos un intervalo ABSENCE respectivamente. Una ausencia cuenta el registro una vez, aunque tenga varias; condiciones pueden coexistir. NONE/APPROVED/MANUAL_LOADED no suman revisión pendiente. No hay paginación ni exclusión de históricos inactivos.
+
+Provincia: snapshot AttendanceRecord.siteId para registros y workplace.siteId para planillas; no usar provincia del empleado. Lectura agregada coherente en RepeatableRead. La imagen docs/arquitectura/dashboardMetricsFrontendExample.png es guía de contenido, no fuente de valores. El frontend debe conservar período/filtro al abrir el destino. Incorporación al común pendiente de sync mediante propuesta20261017-dashboard-metrics.
 
 ### Registros (`/records`)
 - `GET /records`: listado diario de diseño, aún sin DTO final ni ruta implementada. La matriz F-006 usa `/records/monthly`.
@@ -220,7 +225,7 @@ Los DTOs y reglas cross-app tienen una sola definición en [contrato común](arq
 
 ## Diferencias abiertas con archivos/métricas mock
 
-Los mocks Admin consumen `/dashboard/metrics`, pero el diseño base publica `/dashboard/summary`; ruta/query final pendiente de ratificación. El mock exige `expiresAt` en descarga, mientras el acuerdo vigente solo garantiza `downloadUrl`. DTOs completos de listado/upload, multipart, preservación de estado al reemplazar y alcance provincial están pendientes de la propuesta viva enlazada por el contrato común. No inferir aprobación de los servicios frontend. El diseño base anterior no cubre aún todas esas necesidades. URLs firmadas de 15 min se solicitan al descargar, sin persistirlas como dato estable.
+El humano ratificó `/dashboard/metrics` con month/year y byProvince (sección Dashboard). El mock exige `expiresAt` en descarga, mientras el acuerdo vigente solo garantiza `downloadUrl`. DTOs completos de listado/upload, multipart, reemplazo y alcance provincial fueron ratificados localmente; DTOs de archivos se concretan en F-007. Los ajustes comunes esperan incorporación/sync. No inferir aprobación de los servicios frontend. El diseño base anterior no cubre aún todas esas necesidades. URLs firmadas de 15 min se solicitan al descargar, sin persistirlas como dato estable.
 
 ## Evidencia de implementación vigente
 

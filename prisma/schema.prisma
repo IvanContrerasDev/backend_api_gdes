@@ -16,6 +16,9 @@ model User {
   lastName      String
   email         String        @unique
   emailVerifiedAt DateTime?
+  timesheets Timesheet[] @relation("TimesheetEmployee")
+  uploadedTimesheets Timesheet[] @relation("TimesheetUploader")
+  replacedTimesheets Timesheet[] @relation("TimesheetReplacer")
   monthlySnapshots MonthlySnapshot[]
   attendanceEvents AttendanceEvent[]
   attendanceRecords AttendanceRecord[]
@@ -194,6 +197,7 @@ model Workplace {
 
   attendanceEvents AttendanceEvent[]
   attendanceRecords AttendanceRecord[]
+  timesheets Timesheet[]
 
   @@index([clientId, siteId, status])
 }
@@ -339,4 +343,31 @@ model MonthlySnapshot {
   expiresAt DateTime
   @@index([expiresAt])
   @@index([ownerId])
+}
+
+// Shared document-domain persistence. Dashboard reads period/status; F-007 owns uploads.
+model Timesheet {
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @db.Uuid
+  employee User @relation("TimesheetEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  workplaceId String @db.Uuid
+  workplace Workplace @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  month Int
+  year Int
+  sequenceNumber Int
+  status TimesheetStatus @default(PENDING)
+  fileKey String
+  fileName String
+  fileExtension String
+  fileSizeBytes Int
+  uploadedById String @db.Uuid
+  uploadedBy User @relation("TimesheetUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  replacedById String? @db.Uuid
+  replacedBy User? @relation("TimesheetReplacer", fields: [replacedById], references: [id], onDelete: Restrict)
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([employeeId, workplaceId, month, year, sequenceNumber])
+  @@index([year, month, status])
+  @@index([workplaceId])
 }

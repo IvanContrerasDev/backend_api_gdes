@@ -1,6 +1,6 @@
 # 02 — Modelo de datos
 
-**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; incluye AttendanceEvent/AttendanceRecord/Interval; no incluye archivos ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; ReviewStatus/IntervalReviewStatus sin REJECTED; AdminRequestStatus lo conserva. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
+**Diseño aprobado, implementación parcial:** schema actual contiene User (con emailVerifiedAt), Site, Client, Workplace y auth base (AuthSession/AuthRefreshToken/AuthChallenge/AuthRateLimit). Gestión de empleados/perfil implementada; incluye AttendanceEvent/AttendanceRecord/Interval; incluye Timesheet como persistencia para métricas mensuales; aún no incluye Document/uploads ni flujos de registro/recuperación/solicitud admin. OtpPurpose.LOGIN ya existe; ReviewStatus/IntervalReviewStatus sin REJECTED; AdminRequestStatus lo conserva. Nivel Prisma de diseño. Todos los ids son `uuid`. Timestamps `createdAt`/`updatedAt` en UTC en todas las entidades salvo que se indique lo contrario. **Timezone lógica del sistema: GMT-3 única** (spec admin §29/§76) — ver regla de fechas en `05-asistencia-eventos-y-registros.md`.
 
 ## Diagrama de relaciones
 
@@ -237,3 +237,7 @@ Persistencia de asistencia implementada en20261016030000_attendance, aprobación
 ### MonthlySnapshot (F-006 implementada y aprobada)
 
 Tabla técnica: id UUID/token opaco, ownerId FK User, context canónico, payload JSON inmutable con filas/días/nombres/estados/totales, createdAt y expiresAt absoluto15min. Índices ownerId/expiresAt; sin updatedAt por inmutabilidad. Limpieza solo expirados. AttendanceRecord agrega índices date/userId/workplaceId y workplaceId para matriz/guard histórico. Los snapshots no autorizan escrituras.
+
+### Persistencia de planillas y métricas implementada
+
+Timesheet fue incorporado por F-009 (migración20261017000000_timesheets) para contar fuentes reales. Campos de diseño anteriores más fileExtension/fileSizeBytes, version1 y replacedById nullable; uploadedById identifica uploader original. Unicidad(employeeId,workplaceId,month,year,sequenceNumber), checks de mes1–12/año2000–9999/tamaño y secuencia positivos; índices período/status y lugar. Las rutas de archivos aún son F-007. Dashboard lee snapshot AttendanceRecord.siteId y provincia del lugar de Timesheet, con agregados en RepeatableRead.
