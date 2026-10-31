@@ -6,16 +6,16 @@
 
 Fuente canónica de los acuerdos de integración: una sección vigente por tema, con motivo breve. Los tres subrepos reciben copias idénticas desde `GdesProject/template/`. El detalle interno del backend vive en sus docs 02–07; las specs locales enlazan este contrato y no redefinen DTOs comunes.
 
-**Estado comprobado en código al 2026-10-16:** mobile opera con mocks y sesión local; Admin tiene aplicación React con adaptadores mock/HTTP y módulos operativos mock; backend tiene bootstrap NestJS/Prisma, modelos User/Site y únicamente `GET /health`. `src/app.module.ts` no registra módulos de dominio y `src/main.ts` no aplica prefijo `/api/v1`. Las rutas de dominio de este documento son **diseño acordado pendiente de implementación**, no API disponible. La integración real y sus pruebas siguen pendientes.
+**Estado comprobado en código al 2026-10-17:** mobile conserva flujos operativos con mocks/sesión local; Admin conserva módulos operativos mock con adaptador HTTP parcial; backend implementa y prueba las features F-001–F-009, incluidas autenticación, estructura, asistencia, matriz mensual, métricas, archivos y solicitudes administrativas. La API backend está disponible para integración; esto no demuestra que los clientes estén integrados ni que proveedores/dominios de producción estén provisionados. Ver `backend_api_gdes/docs/README.md` y los contratos HTTP en `backend_api_gdes/docs/03-contratos-api.md`.
 
-Brechas de implementación: Prisma conserva `REJECTED` en enums de revisión, mientras el contrato lo excluye; su DocumentType usa INTERNAL_RULES frente a INTERNAL_POLICIES del mock Admin, sin mapping ratificado; Admin usa el enum de revisión de registro también en intervalos. Mobile conserva campos y respuestas locales distintos. No convertir esas diferencias en decisiones aprobadas ni modificar producto en una limpieza documental.
+Brechas de implementación: Admin conserva `INTERNAL_POLICIES` en el mock frente a `INTERNAL_RULES` en el contrato/backend y usa el enum de revisión de registro también en intervalos. Mobile conserva campos y respuestas locales distintos. No convertir esas diferencias en decisiones aprobadas ni modificar producto en una limpieza documental.
 
 ## Convenciones
 
 - Base diseñada `/api/v1`; JSON con campos en inglés e interfaz y `error.message` en español. IDs de entidades UUID; timestamps ISO 8601 UTC; fechas civiles `YYYY-MM-DD` en GMT-3.
 - Éxito `{ data: T }`; listas `{ data: T[], pagination: { page, pageSize, totalItems, totalPages } }`; error `{ error: { code, message, retryable } }`. El frontend considera también HTTP status, no solo `retryable`.
 - `employeeId` en un usuario es su legajo string; en queries de recursos es UUID de User cuando se indica como filtro de empleado. No intercambiarlos.
-- No exponer passwords/hashes, claves privadas de archivos o refresh web en respuestas de recursos.
+- No exponer passwords/hashes, claves privadas de archivos o refresh web en respuestas de recursos. Si el proveedor de notificaciones falla, responder `503 NOTIFICATION_UNAVAILABLE`, `retryable=true`, con mensaje español sin datos upstream; los endpoints de auth no emiten tokens cuando falla el envío síncrono requerido. Aceptación del proveedor no equivale a entrega.
 - `UserRole = EMPLOYEE | TO_BE_ADMIN | ADMIN | SUPER_ADMIN`; mobile admite únicamente EMPLOYEE (otros → `403 ROLE_NOT_ALLOWED`); Admin admite ADMIN/SUPER_ADMIN. INACTIVE bloquea operaciones nuevas y conserva lectura histórica. Admin puede realizar cargas retrospectivas como corrección histórica; revalidar permisos y estado al guardar. No hay desactivación en cascada.
 
 Motivo: mantener identidad y semántica iguales entre consumidores sin exponer modelos privados de persistencia.
@@ -24,10 +24,14 @@ Motivo: mantener identidad y semántica iguales entre consumidores sin exponer m
 
 - Usuario público: `{ id, firstName, lastName, email, employeeId, role }`. Mobile debe migrar los actuales `nombre/apellido/legajo` de `stores/authStore.ts` y su sesión AsyncStorage sin tokens.
 - Login por identifier/password (`POST /auth/login`) o Google (`POST /auth/google`) responde 202 con challenge; ambos exigen OTP WhatsApp. Tokens solo tras `POST /auth/otp/verify`.
-- Registro: OTP WhatsApp más email por magic link. Tras OTP existe cuenta sin tokens; login devuelve `403 EMAIL_NOT_VERIFIED` hasta confirmar email.
+- Registro: OTP WhatsApp más email por magic link. Tras OTP existe cuenta sin tokens; login devuelve `403 EMAIL_NOT_VERIFIED` hasta confirmar email. El magic link vence a las 24 h; recuperación vence a 1 h. La política de contraseña de nueva cuenta es local, 12–128 caracteres Unicode; no consulta HIBP ni otra lista remota. La cobertura de la lista local es limitada.
 - Refresh mobile permanece en JSON mediante `/auth/refresh`, con almacenamiento seguro al implementar. No reutilizar transporte web.
 
-Motivo: verificar posesión del teléfono en login y ambas vías de contacto en registro. Detalle de challenges/tokens y seguridad interna: `backend_api_gdes/docs/04-auth-y-seguridad.md` (diseño, no servicio disponible).
+Enlaces y reenvíos se ligan a propósito, usuario, generación de credenciales y hash del email destino. Cambiar el email invalida enlaces anteriores; cambiar contraseña revoca sesiones/refresh y challenges anteriores. OTP se liga al contacto destino vigente; reenviar no rehabilita una prueba antigua. Endpoints neutros persisten la misma intención para cualquier dirección válida y responden 202 sin consulta condicional de existencia; registro crea la intención de email en la transacción de cuenta y consumo OTP. El proveedor se configura explícitamente; no afirmar que la entrega real está certificada. En desarrollo, Resend usa idempotencia estable; Meta no reintenta automáticamente un resultado ambiguo y el reenvío respeta cooldown de 60 s.
+
+La verificación usa `API_PUBLIC_URL/api/v1/auth/email/verify?token=...` y redirige con 302 a `MOBILE_DEEP_LINK_SCHEME://email-verified?success=true`. Recuperación abre `ADMIN_FRONTEND_URL/password-reset?token=...` para ambas apps. `API_PUBLIC_URL` es origen configurado, nunca derivado de `Host`/`Forwarded`; en producción debe configurarse explícitamente con HTTPS. Dominios de producción y pantallas/deep links de los clientes siguen pendientes.
+
+Motivo: verificar posesión del teléfono en login y ambas vías de contacto en registro. Detalle de challenges/tokens y seguridad interna: `backend_api_gdes/docs/04-auth-y-seguridad.md`.
 
 ## Sesión web admin
 
@@ -77,7 +81,9 @@ Concurrencia: una promesa de refresh por pestaña y coordinación same-origin me
 
 Despliegue: proyectos Vercel separados es la preferencia vigente; dominios/orígenes no elegidos. `prolimpservicios.com` pertenece al humano; `admin.prolimpservicios.com` y `api.prolimpservicios.com` son candidatos. Usar un API `*.vercel.app` desde el dominio propio sería cross-site; dos subdominios del dominio propio serían same-site pero cross-origin. CORS requiere allowlist exacta y credenciales. Cookies cross-site requieren `SameSite=None; Secure` y siguen sujetas a bloqueo/partición del navegador; CORS no lo evita.
 
-**Pendientes por ratificar:** URLs reales, atributos/nombre/vida de cookie, emisión y rotación CSRF/preauth (incluido login CSRF), identificador de generación de sesión, comportamiento logout offline, navegadores/fallback. `__Host-gdes-refresh`, Path=/, sin Domain, cookie de sesión sin recordar y Max-Age hasta siete días al recordar son candidatos, no atributos finales aprobados. Backend propone y humano ratifica antes de integración real.
+Para desarrollo y pruebas queda ratificada la cookie refresh `__Host-gdes-refresh` con `Secure`, `HttpOnly`, `Path=/` y sin `Domain`; frontend y API same-site con CORS de origen explícito; CSRF ligado a preauth y renovado al autenticar; ante refresh ambiguo se exige relogin. Se usa `SameSite=Lax`, cookie de sesión sin `Max-Age` y duración absoluta de hasta siete días al recordar. El token CSRF deriva por HMAC del preauth/generación de sesión; `Origin` debe coincidir exactamente. CSRF mal formado devuelve `400 BAD_REQUEST`; sesión inválida, `401 INVALID_TOKEN`. No se agregan campos DTO.
+
+**Pendiente de despliegue/integración:** dominios/orígenes de producción, navegadores soportados y comportamiento de fallback/logout offline. El acuerdo de desarrollo no certifica despliegue.
 
 Motivo: limitar persistencia de credenciales web y conservar rotación estricta sin cambiar mobile. Mocks no demuestran cookies, CSRF ni coordinación real.
 
@@ -119,12 +125,14 @@ interface AdminAccessSubmitted {
 POST inicial y `/auth/admin-access-request/resend` → 202 `AdminAccessChallenge`; `/auth/admin-access-request/verify` con `VerifyAdminAccess` → `AdminAccessSubmitted`. Resend usa `ResendAdminAccess` y devuelve challenge completo para reemplazar el activo. Respuestas neutrales antes de verificar: sin existencia, perfil o rol; `birthDate` civil, `siteId` UUID y `employeeId` legajo string.
 
 - Código de seis dígitos: TTL 10 min, máximo cinco intentos, cooldown 60 s; payload pendiente se elimina a las 72 h. Contraseñas nunca en texto persistido/logs; nueva contraseña hasheada en backend.
-- Cuenta nueva: tras verificar, crear perfil completo TO_BE_ADMIN y solicitud PENDING transaccionalmente. Existente EMPLOYEE ACTIVE: exigir contraseña actual más OTP, preservar perfil/password; discrepancias no identitarias se advierten después de verificar y se continúa sin sobrescribir.
+- Cuenta nueva: tras verificar, crear perfil completo TO_BE_ADMIN y solicitud PENDING transaccionalmente. Existente EMPLOYEE ACTIVE: exigir contraseña actual más OTP, preservar perfil/password; discrepancias no identitarias se advierten después de verificar y se continúa sin sobrescribir. El POST inicial valida una contraseña sintáctica de 1–128 caracteres Unicode para toda identidad; una cuenta existente prueba su contraseña actual incluso si es legada. La política nueva de 12–128 y lista local se aplica solo después del OTP al crear cuenta nueva, para evitar revelar existencia antes de probar el email. OTP completa `emailVerifiedAt` solo si aún es null y conserva fecha previa, perfil y hash existentes.
 - Conflicto de email/DNI/legajo con otra cuenta: `409 ADMIN_REQUEST_IDENTITY_CONFLICT`; INACTIVE no se reactiva; ADMIN/SUPER_ADMIN no se degrada. No revelar elegibilidad antes de prueba de identidad; `403 ADMIN_REQUEST_NOT_ELIGIBLE` según catálogo backend por materializar.
 - TO_BE_ADMIN con solicitud pendiente: no duplicar solicitud/correos. Revalidar identidad y estado en transacción. El cambio de rol bloquea también mobile y requiere control de rol actual/revocación, sin esperar un JWT antiguo.
 - Después de verificar se envían correos de recepción y decisión. Link de decisión de un solo uso, TTL siete días: GET muestra UI, POST confirma aprobación/rechazo. Aprobar → ADMIN; rechazar → EMPLOYEE; INACTIVE mientras se espera → solicitud cancelada. No borrar cuenta.
 
-Pendiente de detalle backend: reenvío sin extender indefinidamente retención, idempotencia ante respuesta perdida, catálogo completo de errores y UX de limpieza del token de URL. No asumir una estrategia técnica por estar propuesta.
+Una solicitud PENDING cuyo enlace de decisión venció puede renovarse por siete días tras nueva verificación OTP del email del solicitante, conservando la solicitud y generando token/hash nuevos; los anteriores quedan invalidados. Mientras el enlace siga vigente no se duplican solicitudes ni correos de recepción/decisión. Un challenge consumido no se puede reutilizar. Antes de renovar se revalidan contraseña actual, identidad, cuenta ACTIVE y elegibilidad TO_BE_ADMIN; solicitudes canceladas o decididas no se reactivan. Cada generación permite una sola notificación de decisión. Tras rechazo o cancelación se permite una nueva solicitud solo con OTP fresco, contraseña actual, cuenta ACTIVE y rol elegible; se conserva la fila anterior. Una solicitud aprobada mantiene ADMIN y no puede volver a postularse. Challenges concurrentes se serializan para mantener una sola solicitud PENDING y sus notificaciones.
+
+La confirmación continúa siendo `POST /auth/admin-access/confirm` con token y decisión, sin JWT adicional; el GET del frontend solo presenta confirmación. Replay/cancelación devuelve `409 REQUEST_ALREADY_DECIDED`, token vencido `410 TOKEN_EXPIRED` e inválido `401 INVALID_TOKEN`. La cancelación por INACTIVE es interna y reactivar la cuenta no revive la solicitud. Notificaciones persistentes distinguen aceptación del proveedor de entrega y no almacenan bearer.
 
 Motivo: impedir cambios de rol por conocer un email y evitar decisiones involuntarias de scanners de correo.
 
@@ -334,7 +342,9 @@ Mobile emite eventos atómicos CHECK_IN/CHECK_OUT/ABSENCE; backend persiste Atte
 
 Total = suma de WORK CLOSED, sin horas de ausencia. Entrada agrega intervalo; salida cierra el último abierto del mismo día/lugar. Entradas 09:00/11:00 y salidas 12:00/18:00 producen 600 minutos, incluidos solapamientos históricos. Cruce de medianoche no se cierra/fusiona: dos registros OPEN/SEMI_CLOSED, ambos incompletos y cero trabajo cerrado. Motivo de ausencia opcional siempre; null se muestra “sin motivo”.
 
-Ventana offline acordada inclusiva: `receivedAt` asignado por servidor menos `occurredAt <= 24 h`. Más antiguo devuelve `422 ATTENDANCE_EVENT_TOO_OLD`, `retryable=false` (diseño técnico documentado en catálogo backend, todavía sin implementación). Pendientes timestamps futuros/clock skew y pruebas de frontera; no usar recepción enviada por cliente. La cola offline mobile existe pero la UI aún la mantiene inactiva.
+Online, el servidor asigna `occurredAt`. Offline, el cliente envía la hora original de marcación en `occurredAt` y la hora actual del teléfono al sincronizar en `clientSentAt`; esta última no puede adelantarse más de dos minutos al servidor. `receivedAt` siempre lo asigna el servidor. Se procesan eventos por orden de recepción, sin reconstruir secuencias según la hora del cliente. La ventana inclusiva admite `receivedAt - occurredAt <= 24 h`; eventos más antiguos devuelven `422 ATTENDANCE_EVENT_TOO_OLD`, `retryable=false`. Sin `clientSentAt`, el evento sigue la ruta online con hora efectiva del servidor; no se impone límite simétrico al atraso. La comprobación del reloj actual no certifica la hora original. La cola offline existe en mobile, pero su UI aún está inactiva.
+
+Si una salida recibida antes que la última entrada abierta intenta cerrar el intervalo, no se restaura el orden por hora cliente ni se calcula trabajo negativo: se crea un nuevo intervalo `SEMI_CLOSED`, se mantiene la entrada `OPEN` y el registro queda `PENDING`.
 
 Motivo: preservar evidencia original y evitar completar jornadas o razones por inferencia.
 
@@ -438,15 +448,15 @@ interface ReviewRecord {
 }
 ```
 
-POST `/records` crea con `CreateRecord` → 201 `{ data: RecordDetail }`; PATCH `/records/{id}` con `UpdateRecord` corrige → `{ data: RecordDetail }`. Identidad user/lugar/fecha inmutable. Omitido conserva; null limpia solo nullable; intervalos no mencionados se conservan. UPDATE/DELETE deben pertenecer al registro y quedar al menos uno (`422 RECORD_INTERVALS_REQUIRED`). Manual no admite WORK sin ambos extremos, registro vacío ni nuevos solapamientos; no invalida históricos proyectados. Campos derivados los calcula backend.
+POST `/records` crea con `CreateRecord` → 201 `{ data: RecordDetail }`; PATCH `/records/{id}` con `UpdateRecord` corrige → `{ data: RecordDetail }`. Identidad user/lugar/fecha inmutable. Omitido conserva; null limpia solo nullable; intervalos no mencionados se conservan. UPDATE/DELETE deben pertenecer al registro y quedar al menos uno (`422 RECORD_INTERVALS_REQUIRED`). La carga manual se divide por día GMT-3; cada tramo diario se envía por separado y se admite `endTime=00:00` del día siguiente, sin creación implícita de varios registros. No se admiten WORK sin ambos extremos, registros vacíos ni solapamientos nuevos; validación aplica a WORK y ABSENCE por ambos extremos. Intersecciones históricas pueden conservarse o reducirse, pero no ampliarse ni crearse por pares/rango; tramos contiguos no se solapan. Campos derivados los calcula backend.
 
-Toda corrección usa `expectedVersion`; incrementa versión y recalcula proyección MANUAL/MANUAL_LOADED, intervalos editados MANUAL, sin crear/editar/borrar AttendanceEvent. PATCH `/records/{id}/review` con `ReviewRecord` aprueba e incrementa versión conservando origen, datos, horarios e intervalos exactamente; devuelve detalle. No hay ruta aprobada de revisión individual de intervalos. Conflicto: `409 RECORD_VERSION_CONFLICT`, no reintentable; conservar formulario y ofrecer recargar/comparar.
+Toda corrección usa `expectedVersion`; incrementa versión y recalcula proyección MANUAL/MANUAL_LOADED, intervalos editados MANUAL, sin crear/editar/borrar AttendanceEvent. PATCH `/records/{id}/review` con `ReviewRecord` aprueba e incrementa versión conservando origen, datos, horarios e intervalos exactamente; devuelve detalle. No hay ruta aprobada de revisión individual de intervalos. Un evento nuevo CHECK_IN/CHECK_OUT/ABSENCE sobre un registro APPROVED lo devuelve a PENDING y aumenta versión dentro de la misma transacción. Reintentos idempotentes y eventos rechazados no cambian la aprobación; esta representa los datos vigentes al momento de aprobar, no fichadas futuras. Conflicto: `409 RECORD_VERSION_CONFLICT`, no reintentable.
 
 Motivo: separar validación administrativa de corrección y evitar pérdida silenciosa de cambios/evidencia.
 
 ### Detalle y metadata bajo demanda
 
-GET `/records/{id}` incluye relaciones/intervalos y referencias livianas a eventos; GET `/attendance-events/{id}` carga metadata al pedir más detalles. Intervalos manuales no sintetizan eventos. **Los DTOs siguientes están aprobados para mocks; publicación final backend pendiente.**
+GET `/records/{id}` incluye relaciones/intervalos y referencias livianas a eventos; GET `/attendance-events/{id}` carga metadata al pedir más detalles. Intervalos manuales no sintetizan eventos. Los DTOs siguientes son el contrato publicado y probado por backend.
 
 ```ts
 interface RecordDetail {
@@ -477,7 +487,7 @@ interface RecordInterval {
   absenceReason: "ILLNESS" | "VACATION" | "LEAVE" | "ART" | "OTHER" | null;
   observations: string | null;
   origin: "AUTOMATIC" | "MANUAL";
-  reviewStatus: RecordDetail["reviewStatus"];
+  reviewStatus: "NONE" | "PENDING" | "APPROVED";
   attendanceEvents: Array<{
     id: string;
     type: "CHECK_IN" | "CHECK_OUT" | "ABSENCE";
@@ -488,7 +498,7 @@ interface RecordInterval {
 interface AttendanceEventDetail {
   id: string;
   recordId: string;
-  intervalId: string;
+  intervalId: string | null;
   type: "CHECK_IN" | "CHECK_OUT" | "ABSENCE";
   occurredAt: string;
   receivedAt: string;
@@ -504,30 +514,26 @@ interface AttendanceEventDetail {
 }
 ```
 
-La forma mock usa `RecordDetail["reviewStatus"]` también en intervalos; es una brecha frente al enum IntervalReviewStatus acordado, no permiso para introducir MANUAL_LOADED en intervalos del contrato final. Metadata escalar de solo lectura; distinguir null/desconocido. Confirmar con backend nombres finales, nullabilidad para históricos, vínculos de eventos tras borrar intervalos y usos de origin ADMIN (las correcciones no generan eventos).
+`MANUAL_LOADED` solo existe en el registro, no en intervalos. Metadata es escalar y de solo lectura; `intervalId` puede ser null cuando se quitó el intervalo, mientras el evento conserva su `recordId`. `clientRequestId` y `clientSentAt` se reservan de la metadata pública; el JSON original anidado o con colisiones se conserva como `deviceInfoJson`.
 
 UI: detalle por doble clic o Enter/Espacio, `recordId` en query, diálogo accesible con Escape; carga/error/reintento independientes por detalle/evento. No consultar eventos por celda durante render.
 
 ## Archivos y métricas
 
-Acuerdos vigentes, todavía sin backend de dominio:
+`GET /catalogs` es público y devuelve solo provincias `{value,label}` y tipos fijos de ausencia/documento; no expone empleados, clientes ni lugares. El catálogo de documentos usa `INTERNAL_RULES` (“Normas internas”). Planillas requieren `workplaceId` salvo contingencia con null. Cargas multipart admiten 1–10 archivos de hasta 20 MiB inclusivos cada uno, extensiones pdf/jpg/jpeg/png/doc/docx/txt y validación de contenido. Un lote se publica todo-o-nada. Admin y empleado tienen envelopes de subida distintos: admin recibe objetos `created` completos; mobile conserva `timesheetIds`/`documentIds` y `message`. Para documentos, `workplaceId` es opcional.
 
-- Planillas requieren `workplaceId`; contingencia admite `workplaceId: null`. Mobile aún usa `DocumentUploadRequest.workplace`, months vacío y URIs locales: no es subida HTTP real.
-- 20 MiB (20 × 1024 × 1024 bytes) por archivo, máximo 10 por request; pdf/jpg/jpeg/png/doc/docx/txt, validar contenido en backend además de extensión. Lote atómico con rollback DB/bucket. No inferir que proxy/hosting acepta hasta 200 MiB sin probar transporte.
-- Búsqueda por fileName y nombre/apellido/legajo del empleado. Descarga vigente `{ data: { downloadUrl } }` con firma 15 min; pedir firma nueva al reintentar, no persistir URLs vencidas. Añadir `expiresAt` obligatorio es propuesta abierta.
-- Borrar documento sí, planilla no. Reemplazo no borra original hasta confirmar archivo nuevo válido. Edición de documento: nombre visible/tipo. Sin OCR, registros generados ni vínculo automático con ausencias.
-- Métricas del mes seleccionado: `pendingTimesheets`, `incompleteRecords`, `pendingReviewRecords`, `recordsWithAbsence`; esta última cuenta registros con >=1 ABSENCE, no intervalos/horas. Enlaces conservan período/filtro. Alcance provincial pendiente.
+Descargas de archivos devuelven `{ data: { downloadUrl, expiresAt } }`, con `expiresAt` en ISO 8601 UTC; la firma dura 15 minutos y se solicita nuevamente al reintentar. No persistir URL vencida. Documento puede eliminarse; planilla no. Reemplazar una planilla conserva identidad, empleado, lugar, período, secuencia, uploader y fecha original; crea auditoría de reemplazante, vuelve a `PENDING` e incrementa versión con `expectedVersion`; una versión obsoleta devuelve `409 FILE_VERSION_CONFLICT`. Un fallo al guardar la nueva carga conserva el archivo anterior. Los objetos no se publican hasta confirmar metadata; la limpieza física fallida se recupera mediante journal persistido y puede ser eventualmente consistente. Al fallar una operación de almacenamiento se devuelve `503 STORAGE_UNAVAILABLE`, `retryable=true`, sin detalles del proveedor.
 
-Motivo: coherencia de archivos y contadores sin atribuir transporte real ni decisiones nuevas a mocks.
+Los cambios de `clientId` o `siteId` de un lugar se bloquean bajo lock si existe cualquier registro o planilla; nombres y geometría sí se pueden editar. Relaciones idénticas son idempotentes. El dashboard es `GET /dashboard/metrics?month=&year=`, solo ADMIN/SUPER_ADMIN, reemplaza `/dashboard/summary`; mes 1–12, año 2000–9999; parámetros inválidos devuelven `422 VALIDATION_ERROR`. Devuelve `pendingTimesheets`, `incompleteRecords`, `pendingReviewRecords`, `recordsWithAbsence` y `byProvince` con los mismos cuatro contadores para todas las provincias, incluso ceros. Totales y desgloses corresponden al mes seleccionado; planillas usan período, registros su fecha civil GMT-3. Ausencias cuenta cada registro una vez aunque tenga varios intervalos; condiciones pueden coexistir. Provincia viene del snapshot del registro o del lugar de la planilla, no del empleado. No excluir datos históricos inactivos. Los destinos de navegación conservan mes/año.
 
-DTOs completos de planillas/documentos/metrics, `expiresAt`, preservación de estado al reemplazar, auditoría/concurrencia, multipart, filtros y scope provincial son **propuesta pendiente**, en `admin_web_app/docs/changes_proposals/20260919-f007-f009-planillas-legajos-metricas.md`. Sus modelos implementados están en `admin_web_app/src/types/{timesheets,documents,dashboard}.ts`; el mock actual de métricas exige además `byProvince`, todavía sin ratificación contractual. No duplicarlos como contratos aprobados.
+Motivo: preservar auditoría y atribución histórica, facilitar cargas de ambas apps y alinear los contadores con sus destinos provinciales.
 
 ## Pendientes de decisión e integración
 
-- Auth mobile: TTL del magic link de email (24 h en diseño backend) requiere confirmación; no confundir con ventana offline ratificada. Catálogo de ausencia debe aclarar equivalencia de “franco” en UI mobile, sin inventar mapping a VACATION/LEAVE.
-- Sesión web: cerrar los puntos de seguridad/despliegue en su sección antes de F-010; un adaptador HTTP y un mock no prueban autenticación.
-- Archivos/métricas: resolver la propuesta abierta; contador global actual y matriz UI por provincia predeterminada no garantizan el mismo conjunto.
-- Asistencia: precisión segundos/milisegundos, límites de día, igualdad inicio=fin, fechas futuras, máximo de intervalos/observaciones, clock skew, eventos offline desordenados y vínculos históricos requieren definición técnica/validación. No ratificar límites elegidos solo en mock.
-- Catálogos: exposición pública/privada, etiquetas y reenvío 2FA ADMIN deben publicarse con permisos/códigos concretos. No inferir compatibilidad con resend mobile.
+- Auth mobile: integración de clientes y dominios de producción pendientes. El catálogo de ausencia debe aclarar equivalencia de “franco” en UI mobile, sin inventar mapping a VACATION/LEAVE.
+- Sesión web: dominios de despliegue, navegadores/fallback y validación de integración permanecen pendientes; el acuerdo de desarrollo no certifica despliegue.
+- Archivos/métricas: filtros, permisos por vista, secuencias y coherencia entre navegación y alcance de contadores para Admin siguen pendientes de ratificación común; los mocks no resuelven esas decisiones. Ver `admin_web_app/docs/changes_proposals/20260919-f007-f009-planillas-legajos-metricas.md`.
+- Asistencia: precisión segundos/milisegundos, límites de día, igualdad inicio=fin, fechas futuras, máximo de intervalos/observaciones, validación de clock skew y comportamiento de cola en la UI requieren definición técnica/validación. No ratificar límites elegidos solo en mock.
+- Catálogos: el alcance público de provincias y tipos fijos de ausencia/documento está definido; queda pendiente el catálogo/etiquetado y reenvío 2FA de ADMIN con permisos y códigos concretos. No inferir compatibilidad con resend mobile.
 - Admin HTTP: `src/services/http-service-adapter.ts` descarta el prefijo de base al resolver paths absolutos, no agrega Authorization/CSRF y serializa JSON, no FormData; completar antes de integración. Registro solo valida localmente y auth no implementa todavía renovación/concurrencia completas.
-- Backend: implementar dominio, migrar enums y materializar ejemplos/errores/pruebas; mobile: migrar modelos/envelopes y habilitar flujos acordados; Admin: alinear adaptadores y resolver brechas antes de integración real. Estos pendientes son ejecución, no motivo para conservar propuestas resueltas.
+- Backend: integración de clientes y despliegue; mobile: migrar modelos/envelopes y habilitar flujos acordados; Admin: alinear adaptadores y resolver brechas antes de integración real. Estos pendientes son ejecución, no motivo para conservar propuestas resueltas.

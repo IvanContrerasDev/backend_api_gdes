@@ -15,3 +15,8 @@ docker compose up -d --build api
 ```
 
 El arranque del servicio ejecuta migrate deploy y el seed idempotente. No elimina la base; una colisión histórica de email detiene la migración y debe resolverse explícitamente. Durante pruebas locales, pausar el watcher evita compilaciones simultáneas sobre dist.
+
+
+
+# Notes
+`sudo chown -R "$(id -u):$(id -g)" node_modules`
