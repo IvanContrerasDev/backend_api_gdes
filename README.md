@@ -6,6 +6,8 @@ Documentación y ruta de lectura: [docs/README.md](docs/README.md). Contratos co
 
 Desarrollo: `npm ci`, configurar `.env` desde `.env.example`, `npm run prisma:generate`, `npm run build`; con PostgreSQL, `npm run prisma:deploy`, `npm run prisma:seed`, `npm run start:dev`. Health en localhost:3000/health. Imagen Docker de producción construida y smoke HTTP contra PostgreSQL aislado verificado; compose completo sigue sin ejecución sobre la base local del usuario. Pruebas HTTP reales y preparación de DB aislada en [test/README.md](test/README.md).
 
+En entornos distintos de `NODE_ENV=production`, el seed crea o actualiza cuatro cuentas locales (una por rol), todas activas y con email verificado. Credenciales: `seed.employee@gdes.local`, `seed.to-be-admin@gdes.local`, `seed.admin@gdes.local` y `seed.super-admin@gdes.local`; contraseña por defecto `GdesLocal2026!` para todas. Se puede cambiar antes de sembrar con `LOCAL_SEED_PASSWORD`. Los roles `ADMIN` y `SUPER_ADMIN` requieren el OTP de desarrollo (provider `log`); `TO_BE_ADMIN` queda sujeto al flujo de aprobación y no puede iniciar sesión administrativa.
+
 Si ya existe el volumen Docker de node_modules, `up --build` conserva sus dependencias anteriores. Para actualizar el entorno de desarrollo y aplicar las nuevas migraciones al iniciarlo:
 
 ```bash
@@ -20,3 +22,9 @@ El arranque del servicio ejecuta migrate deploy y el seed idempotente. No elimin
 
 # Notes
 `sudo chown -R "$(id -u):$(id -g)" node_modules`
+
+si al levantar el backend devuelve error por alguna dependencia:
+docker compose stop api
+docker compose run --rm --no-deps api sh -c 'npm ci && npx prisma generate'
+docker compose up -d --build api
+docker compose logs -f api

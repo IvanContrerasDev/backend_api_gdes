@@ -4,7 +4,7 @@ La suite arranca el proceso real `dist/main.js` y usa guards, sesiones y Postgre
 
 Usar únicamente una base dedicada cuyo nombre sea `gdes_f003_test`. La suite rechaza otro nombre, no ejecuta resets y elimina solo fixtures de su ejecución; migración/seed son pasos explícitos. No reutilizar credenciales ni bases de producción.
 
-Ejemplo local reproducible (puerto PostgreSQL 55433 y API 33443 libres):
+Ejemplo local reproducible (puerto PostgreSQL 55433 libre; cada suite reserva dinámicamente el puerto de su API):
 
 ```bash
 docker run --rm -d --name gdes-f003-test \
@@ -35,7 +35,7 @@ npm run lint
 TEST_DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test node --test test/*.e2e.cjs
 ```
 
-Las pruebas auth limpian counters técnicos de rate limit entre casos, por lo que esta base debe ser exclusiva de la suite y no compartirse con sesiones de desarrollo/manuales. Los demás fixtures se eliminan por identidad del run. No arrancar dos ejecuciones de la suite simultáneas en la misma DB/puertos.
+Las pruebas auth limpian counters técnicos de rate limit entre casos, por lo que esta base debe ser exclusiva de la suite y no compartirse con sesiones de desarrollo/manuales. Los demás fixtures se eliminan por identidad del run. No arrancar dos ejecuciones de la suite simultáneas en la misma DB.
 
 Asistencia cubre online con hora servidor, offline con occurredAt/clientSentAt y fronteras inclusivas24h/2min, recepción fuera de orden, GPS/tolerancia, medianoche GMT-3, proyección de intervalos, floor sobre suma total, replay/propiedad/colisiones y atomicidad con fallo tardío. También prueba congelación de clientId/siteId de lugares con registros y ambas carreras con primera ingesta, incluyendo UUID equivalentes en mayúsculas. Vínculo event.recordId durable y secuencia de intervalos independiente de versión preparan correcciones admin.
 

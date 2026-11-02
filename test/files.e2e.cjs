@@ -5,6 +5,7 @@ const { spawn } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const { createServer } = require('node:http');
 const { once } = require('node:events');
+const { createServer: createNetServer } = require('node:net');
 const { PrismaClient } = require('@prisma/client');
 assert.match(process.env.TEST_DATABASE_URL || '', /\/gdes_f003_test(?:\?|$)/);
 const env = Object.fromEntries(
@@ -22,10 +23,10 @@ Object.assign(env, process.env, {
   WHATSAPP_PROVIDER: 'log',
   DATABASE_URL: process.env.TEST_DATABASE_URL,
   JWT_ACCESS_SECRET: 'test-f007-access-secret',
-  PORT: '33450',
+  PORT: '0',
 });
 const db = new PrismaClient({ datasources: { db: { url: env.DATABASE_URL } } });
-const base = 'http://127.0.0.1:33450';
+let base;
 const suffix = randomUUID();
 const users = [],
   clients = [];
@@ -119,6 +120,15 @@ let holdPut = false,
   pendingPutResponses = [],
   ambiguousDelete = false;
 async function startApi() {
+  const reservation = createNetServer();
+  reservation.listen(0, '127.0.0.1');
+  await once(reservation, 'listening');
+  const port = reservation.address().port;
+  await new Promise((resolve, reject) =>
+    reservation.close((error) => (error ? reject(error) : resolve())),
+  );
+  env.PORT = String(port);
+  base = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, ['dist/main.js'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   server.stdout.on('data', (x) => (output += x));
