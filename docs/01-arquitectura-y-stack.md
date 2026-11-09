@@ -85,12 +85,12 @@ test/
 
 ## Variables de entorno (mínimo)
 
-`DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_OTP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANGUAGE` (requeridos para meta), `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION` (`auto` en R2), `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`, `GEOFENCE_TOLERANCE_METERS` (default: `100`), `OTP_TTL_MINUTES` (default: `10`), `API_PUBLIC_URL` (origen puro; localhost3000 en dev/test, HTTPS explícito en producción), `ADMIN_FRONTEND_URL`, `MOBILE_DEEP_LINK_SCHEME`.
+`DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `RESEND_API_KEY`, `EMAIL_FROM`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_API_VERSION`, `WHATSAPP_OTP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANGUAGE` (requeridos para meta), `STORAGE_ENDPOINT`, `STORAGE_PUBLIC_ENDPOINT` (opcional, firma; default interno), `STORAGE_ALLOW_INSECURE_HTTP` (string true/false, default false; solo development/test), `STORAGE_BUCKET`, `STORAGE_REGION` (`auto` en R2), `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY`, `GOOGLE_CLIENT_ID`, `GEOFENCE_TOLERANCE_METERS` (default: `100`), `OTP_TTL_MINUTES` (default: `10`), `API_PUBLIC_URL` (origen puro; localhost3000 en dev/test, HTTPS explícito en producción), `ADMIN_FRONTEND_URL`, `MOBILE_DEEP_LINK_SCHEME`.
 
 ## Docker
 
 - `Dockerfile` multi-stage (build → runtime slim).
-- `docker-compose.yml` de desarrollo: `api` + `postgres:16`. El bucket R2 y los servicios de Meta/Resend/Google son externos (cloud); en dev los providers se mockean por config (`EMAIL_PROVIDER=log`, `WHATSAPP_PROVIDER=log`).
+- `docker-compose.yml` local: API compilada desde target build (npm ci + Prisma generate), PostgreSQL16 y SeaweedFS4.52 fijado por digest; volúmenes existentes de PostgreSQL conservados y volumen nuevo storage_data en /data. API espera bucket S3 con HeadBucket autenticado y DB healthy, aplica migrate deploy y arranca sin seed automático de cuentas ni mounts de node_modules. Inicialización de catálogo/cuentas explícita y comandos en README.md; R2/Resend/Meta siguen vigentes para producción. Providers log en local (`EMAIL_PROVIDER=log`, `WHATSAPP_PROVIDER=log`).
 
 ## Qué NO entra en el MVP
 
@@ -114,6 +114,6 @@ Dashboard mensual F-009 implementado/aprobado: cuatro contadores y desglose prov
 
 Notificaciones F-008B implementadas/aprobadas: Resend y Meta configurables con límites, errores limpios y política de reintentos en06. F-008 completa implementada y aprobada, incluidas solicitudes administrativas y decisión firmada. No se provisionaron ni probaron envíos reales.
 
-Verificación vigente al cierre de estos bloques: build/lint, Prisma validate/generate,190/190 pruebas (solicitudesadmin29/authavanzada25/archivos30/dashboard7/providers9) y catorce migraciones+seed desde DB vacía; revisión independiente sin observaciones abiertas. Procedimiento reproducible en test/README.md. F-007 aprobada: migraciones/SDK/transportes y recuperación verificados; límites del hosting/provisionamiento externo pendientes de despliegue.
+Verificación vigente: 193/193 pruebas, sin fallos ni omisiones, build/lint y Prisma validate/generate. F-010/B-01 aprobado por reviewer independiente: imagen build 9356ca97098b, catorce migraciones desde DB vacía y seed explícito de seis provincias/cero cuentas; smoke API/PostgreSQL/SeaweedFS real con firma pública900s, bytes exactos, rechazo anónimo/vencido403, recreación persistente y storage503 que conserva el original. CORS/cookies/CSRF conservados. Pruebas en proyectos/DB/volúmenes exclusivos eliminados al terminar; DB y volúmenes previos del usuario intactos. Procedimiento en test/README.md. Navegador/Android, servicios productivos y despliegue siguen pendientes.
 
 Empaquetado vigente: imagen targetproduction gdes-auth-review:local(5e707dffb47a), NODE_ENV=production/configuracióndummy y secretos de namespace exclusivos, contra DB auxiliar aislada. Health200, catálogo público200 con6provincias/9tiposdocumento/5ausencias y recurso protegido401; cero usuarios/notificaciones/intenciones creadas, sin mensajes ni cuentas reales. Revisión independiente aprobada sin observaciones técnicas. Esto comprueba arranque y dependencias del artefacto, no certifica servicios externos ni navegador/despliegue.

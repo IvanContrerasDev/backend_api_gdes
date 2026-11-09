@@ -150,6 +150,71 @@
         "Totales generales y desglose de todas las provincias incluidos ceros; fuentes reales y lectura consistente"
       ],
       "documentation": "docs/03-contratos-api.md"
+    },
+    {
+      "id": "F-010",
+      "titulo": "Runtime local reproducible con storage S3 y enlaces alcanzables",
+      "apps": [
+        "backend"
+      ],
+      "estado": "done",
+      "taskSpec": null,
+      "criterios": [
+        "B-01: compose API/PostgreSQL/S3 persistente con bucket privado y readiness autenticada, instalación limpia y sin reset de cuentas al reiniciar",
+        "Endpoint SDK interno separado del endpoint público de firma900s, namespace durable estable y URLs finales accesibles desde host/LAN configurada",
+        "Excepción HTTP explícita solo dev/test y producción HTTPS, validación compartida de entorno/adaptador sin degradar cookies/CSRF/CORS",
+        "Smoke aislado real de bytes, firmas anónimas/vencidas, recreación sin pérdida y fallo storage503 conservando original; health/catalog200 y protegido401",
+        "Documentar comandos/versiones/licencia/URLs y límites navegador/Android, build/lint/regresiones y revisión independiente aprobados"
+      ],
+      "documentation": "docs/06-integraciones.md"
+    },
+    {
+      "id": "F-011",
+      "titulo": "Bandeja local de correo completo y outbox",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "B-02: proveedor de captura de email completo solo desarrollo, bandeja local persistente sin envíos externos y producción lo rechaza",
+        "Namespaces de outbox distinguen destino local; conservar TTL, fencing, aceptación real y claves de negocio estables",
+        "Probar 2FA, verificación, recuperación y solicitudes administrativas con correos/enlaces reales, reinicio y capturador caído",
+        "Build/lint, regresiones de auth/providers y revisión independiente aprobados"
+      ],
+      "documentation": "docs/06-integraciones.md"
+    },
+    {
+      "id": "F-012",
+      "titulo": "Fixtures locales opt-in y garantías para consumidores",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "B-03: fixture local opt-in e idempotente de cliente/lugar con centro GPS explícito elegido por el usuario y cuentas actuales por rol",
+        "Reinicio no restablece contraseñas ni datos manuales y fixtures no se ejecutan en producción",
+        "Garantías HTTP exactas para catalogs público, sites protegido, workplaces por rol, challenges, asistencia/status y uploads/file",
+        "Documentar escenarios y ejemplos saneados para consumidores; Q-01 con apps permanece pendiente hasta evidencia real"
+      ],
+      "documentation": "docs/06-integraciones.md"
+    },
+    {
+      "id": "F-013",
+      "titulo": "Planillas de contingencia con lugar null",
+      "apps": [
+        "backend"
+      ],
+      "estado": "pending",
+      "taskSpec": null,
+      "criterios": [
+        "B-04: carga de contingencia con workplaceId null según acuerdo, ordinaria con lugar obligatorio, sin lugar ficticio",
+        "Migración no destructiva, DTOs y lecturas/descargas/permisos soportan relaciones nulas, secuencia null por contexto propio",
+        "Métricas respetan atribución ratificada sin inferir provincia del empleado; elevar solamente decisiones aún abiertas",
+        "Regresiones de archivos/histórico/métricas y revisión independiente aprobadas"
+      ],
+      "documentation": "docs/06-integraciones.md"
     }
   ]
 }

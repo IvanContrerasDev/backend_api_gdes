@@ -10,6 +10,7 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
+import { validateStorageEndpoints } from './storage.config';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 
@@ -137,6 +138,12 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     ...config,
   };
 
+  validateStorageEndpoints({
+    endpoint: merged.STORAGE_ENDPOINT,
+    publicEndpoint: merged.STORAGE_PUBLIC_ENDPOINT,
+    allowInsecureHttp: merged.STORAGE_ALLOW_INSECURE_HTTP,
+    nodeEnv: typeof merged.NODE_ENV === 'string' ? merged.NODE_ENV : undefined,
+  });
   const validated = plainToInstance(EnvironmentVariables, merged, {
     enableImplicitConversion: true,
   });

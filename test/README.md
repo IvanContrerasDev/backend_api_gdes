@@ -53,4 +53,25 @@ Auth avanzado añade25 casos HTTP/PostgreSQL: registro sin usuario previo/OTP/em
 
 Solicitudes administrativas añaden29 casos: neutralidad/diez campos/contraseñas legadas, conservación de perfil/hash y verificación de email, conflictos/eligibilidad, prueba de credencial vigente, OTP/cooldown/retención72h/límites IP-email-usuario, replay, decisiones opuestas concurrentes/expiry tras locks, revocación, triggerINACTIVE/cancelación, renovación con nuevaOTP/mismoid, re-postulación con otra fila e historial, y una solaPENDING. Correo prueba reinicio/fallo/namespace/lease/fencing/JWT-body-key estables/TTL24h, elegibilidad después de firma y ausencia de envíos de capacidades obsoletas. Providers incluye9 casos y prueba clase LogNotifications real: solo OTP de dos asuntos conocidos, destinatario redactado, sin HTML/bearer/links y producción bloqueada. Las pruebas no enviaron mensajes reales.
 
-Verificación independiente actual:190/190 sin fail/skip/todo, build/lint/Prisma y14migraciones+seed desde DB vacía. Imagen targetproduction5e707dffb47a construida y arrancada con NODE_ENV=production/configdummy/namespaceúnico: health200, catálogo público200(6provincias/9documentos/5ausencias), protegido401 y cero cuentas/notificaciones/intenciones en auxiliar. Sin mensajes reales. Contenedor smoke y auxiliar eliminados; no se modificaron DB/volúmenes del usuario.
+Verificación independiente vigente: 193/193 pruebas, fail/cancelled/skip/todo0, build/lint/Prisma y smoke real de runtime local aprobados. Imagen build 9356ca97098b contrastada con fuentes actuales; catorce migraciones desde DB vacía y seed de seis provincias/cero cuentas. Smoke comprueba bytes/firma900s/403, recreación persistente y storage503 sin pérdida del original, además de health/catalog200, protegido401 y CORS/cookies/CSRF. Implementer y reviewer usaron proyectos/DB/volúmenes exclusivos y retiraron solo sus recursos; DB/volúmenes preexistentes intactos. Sin envíos reales. Navegador/Android y servicios productivos no certificados.
+
+## Runtime S3 real aislado (F-010/B-01)
+
+Smoke opt-in con Docker Compose v2, Node24, dependencias locales instaladas y acceso Docker/red para descargar imágenes. No utiliza el compose/DB/volúmenes del usuario: genera nombre de proyecto UUID, puertos libres solo loopback y volúmenes exclusivos, y elimina únicamente ese proyecto con `down -v` al terminar. Nombre DB obligatorio gdes_f003_test. No ejecutar dos suites contra la misma DB. Sin envíos externos: providers log fijados después de configuración heredada.
+
+```bash
+npm ci
+npm run prisma:generate
+npm run build
+npm run lint
+# Compila imagen sin bind mounts ni node_modules heredados:
+docker build --target build -t gdes-f010-build:local .
+# Solo smoke real:
+node test/runtime-local.smoke.cjs
+# Smoke y TODAS las regresiones en su DB recién creada/exclusiva:
+RUNTIME_RUN_REGRESSIONS=true node test/runtime-local.smoke.cjs
+```
+
+Se puede elegir otra imagen recién construida con RUNTIME_TEST_IMAGE. El script usa el compose versionado, reemplaza nombres/puertos para aislamiento, migra14migraciones desde DBvacía y ejecuta seed en NODE_ENV=production (solo6provincias,0cuentas); crea fixtures exclusivos con sesiones persistidas y JWT firmados. Prueba API Docker health200/catalog200/protegido401, preflight origen exacto/credentials/CSRF y origen ajeno no autorizado, cookie Secure/HttpOnly/SameSite=Lax y rechazo login sin CSRF. Upload multipart por API→AWS SDK→SeaweedFS; firma host público900s, GET bytes exactos, anónimo/firma vencida403. Recrea API+storage manteniendo volúmenes y compara metadata/bytes/hash de cuenta; storage caído503 no reemplaza archivo previo. Readiness HeadBucket autenticado antes de API y después del restart.
+
+La suite normal incluye storage-config con validación directa/boot y namespace interno+bucket estable al cambiar público; archivos mantiene regresiones journal/crash/carreras/namespace sobre S3 simulado. El smoke es HTTP desde host: navegador elegido, cookies sobre LAN/HTTPS y Android físico siguen pendientes. El script no inicia consumidores ni certifica R2/Resend/Meta reales.

@@ -9,6 +9,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { validateStorageEndpoints } from '../../config/storage.config';
 import { ApiException } from '../../common/errors/api.exception';
 import { StorageService, StorageUpload } from './storage.service';
 
@@ -25,31 +26,20 @@ export class R2StorageService extends StorageService implements OnModuleDestroy 
   readonly namespace: string;
   private readonly client: S3Client;
   private readonly bucket: string;
+  private readonly signingClient: S3Client;
   constructor(config: ConfigService) {
     super();
     this.bucket = config.getOrThrow<string>('STORAGE_BUCKET');
-    const endpoint = new URL(config.getOrThrow<string>('STORAGE_ENDPOINT'));
-    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname);
-    if (
-      endpoint.username ||
-      endpoint.password ||
-      endpoint.search ||
-      endpoint.hash ||
-      (endpoint.protocol !== 'https:' &&
-        !(
-          endpoint.protocol === 'http:' &&
-          loopback &&
-          config.get<string>('NODE_ENV') !== 'production'
-        ))
-    )
-      throw new Error(
-        'STORAGE_ENDPOINT requires HTTPS without credentials, query or fragment (HTTP loopback only in development/test)',
-      );
+    const { endpoint, publicEndpoint } = validateStorageEndpoints({
+      endpoint: config.getOrThrow<string>('STORAGE_ENDPOINT'),
+      publicEndpoint: config.get('STORAGE_PUBLIC_ENDPOINT'),
+      allowInsecureHttp: config.get('STORAGE_ALLOW_INSECURE_HTTP'),
+      nodeEnv: config.get<string>('NODE_ENV'),
+    });
     this.namespace = createHash('sha256')
       .update(JSON.stringify([endpoint.toString(), this.bucket]))
       .digest('hex');
-    this.client = new S3Client({
-      endpoint: config.getOrThrow<string>('STORAGE_ENDPOINT'),
+    const clientOptions = {
       region: config.getOrThrow<string>('STORAGE_REGION'),
       credentials: {
         accessKeyId: config.getOrThrow<string>('STORAGE_ACCESS_KEY_ID'),
@@ -57,8 +47,10 @@ export class R2StorageService extends StorageService implements OnModuleDestroy 
       },
       forcePathStyle: true,
       maxAttempts: 1,
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-    });
+      requestChecksumCalculation: 'WHEN_REQUIRED' as const,
+    };
+    this.client = new S3Client({ ...clientOptions, endpoint: endpoint.toString() });
+    this.signingClient = new S3Client({ ...clientOptions, endpoint: publicEndpoint.toString() });
   }
   async upload(file: StorageUpload): Promise<void> {
     const body = createReadStream(file.path);
@@ -92,7 +84,7 @@ export class R2StorageService extends StorageService implements OnModuleDestroy 
     try {
       const now = new Date();
       const downloadUrl = await getSignedUrl(
-        this.client,
+        this.signingClient,
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
         { expiresIn: 900, signingDate: now },
       );
@@ -103,5 +95,6 @@ export class R2StorageService extends StorageService implements OnModuleDestroy 
   }
   onModuleDestroy() {
     this.client.destroy();
+    this.signingClient.destroy();
   }
 }
