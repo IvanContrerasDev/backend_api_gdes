@@ -45,6 +45,19 @@ services:
     volumes:
       - storage_data:/data
 
+  mailpit:
+    image: ghcr.io/axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_AGE: 14d
+      MP_UI_AUTH: ${MAILPIT_UI_USER:-viewer}:${MAILPIT_UI_PASSWORD:-change-ui-password}
+      MP_SEND_API_AUTH: ${MAILPIT_SEND_API_USER:-sender}:${MAILPIT_SEND_API_PASSWORD:-change-send-password}
+    ports:
+      - '${MAILPIT_BIND_ADDRESS:-127.0.0.1}:8025:8025'
+    volumes:
+      - mailpit_data:/data
+
   api:
     build:
       context: .
@@ -56,6 +69,8 @@ services:
         condition: service_healthy
       storage:
         condition: service_started
+      mailpit:
+        condition: service_started
     command: sh -c "node scripts/storage-ready.cjs && npx prisma migrate deploy && node dist/main.js"
     environment:
       NODE_ENV: development
@@ -63,11 +78,14 @@ services:
       DATABASE_URL: postgresql://gdes:gdes@postgres:5432/gdes
       JWT_ACCESS_SECRET: dev-access-secret-change-me
       JWT_REFRESH_SECRET: dev-refresh-secret-change-me
-      # External services are mocked in dev (log providers); keys are placeholders.
-      EMAIL_PROVIDER: log
+      # Local capture; Mailpit is reachable only on the internal Compose network.
+      EMAIL_PROVIDER: mailpit
       WHATSAPP_PROVIDER: log
       RESEND_API_KEY: dev-placeholder
       EMAIL_FROM: no-reply@gdes.local
+      MAILPIT_SEND_URL: http://mailpit:8025/api/v1/send
+      MAILPIT_SEND_API_USER: ${MAILPIT_SEND_API_USER:-sender}
+      MAILPIT_SEND_API_PASSWORD: ${MAILPIT_SEND_API_PASSWORD:-change-send-password}
       WHATSAPP_TOKEN: dev-placeholder
       WHATSAPP_PHONE_NUMBER_ID: dev-placeholder
       STORAGE_ENDPOINT: http://storage:8333
@@ -101,3 +119,4 @@ services:
 volumes:
   postgres_data:
   storage_data:
+  mailpit_data:

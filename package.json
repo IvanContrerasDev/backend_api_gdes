@@ -15,6 +15,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "prisma:local-smoke-fixture": "ts-node prisma/local-smoke-fixture.ts",
     "test": "npm run build && node --test test/*.e2e.cjs"
   },
   "prisma": {

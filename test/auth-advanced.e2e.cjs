@@ -1093,6 +1093,7 @@ test('failed email delivery survives application restart and reuses identical me
   }
   assert.ok(intent, 'first failed attempt must leave durable retry');
   assert.equal(sent.length, 1);
+  assert.equal(intent.completedAt, null, 'provider failure must not complete the auth outbox intent');
   await app.close();
   app = undefined;
   await db.authEmailIntent.update({

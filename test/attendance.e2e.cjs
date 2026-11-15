@@ -300,6 +300,140 @@ test('online persists server time and metadata; status derives from today and re
   await error(body, 'ROLE_NOT_ALLOWED', 403, other);
   assert.equal((await record(row.id)).version, 1);
 });
+test('repeating the non-production seed preserves manually edited local account credentials and status', async () => {
+  const email = 'seed.employee@gdes.local';
+  const original = await db.user.findUnique({ where: { email } });
+  assert.ok(original, 'test database must have received the explicit local seed');
+  const sentinelHash = 'operator-edited-password-hash';
+  try {
+    await db.user.update({
+      where: { id: original.id },
+      data: {
+        passwordHash: sentinelHash,
+        role: 'ADMIN',
+        accountStatus: 'INACTIVE',
+        emailVerifiedAt: null,
+      },
+    });
+    require('ts-node/register');
+    const { seedDatabase } = require('../prisma/seed.ts');
+    await seedDatabase(db, 'test', 'unused seed-test password');
+    const current = await db.user.findUniqueOrThrow({ where: { id: original.id } });
+    assert.equal(current.passwordHash, sentinelHash);
+    assert.equal(current.role, 'ADMIN');
+    assert.equal(current.accountStatus, 'INACTIVE');
+    assert.equal(current.emailVerifiedAt, null);
+  } finally {
+    await db.user.update({
+      where: { id: original.id },
+      data: {
+        passwordHash: original.passwordHash,
+        role: original.role,
+        accountStatus: original.accountStatus,
+        emailVerifiedAt: original.emailVerifiedAt,
+      },
+    });
+  }
+});
+test('opt-in local fixture is discoverable by EMPLOYEE and its persisted attendance appears in Admin monthly records', async () => {
+  const fixtureEmployee = await person();
+  const fixtureClientId = randomUUID();
+  const fixtureWorkplaceId = randomUUID();
+  const fixtureClientName = `F012 cliente ${suffix}`;
+  const fixtureWorkplaceName = `F012 lugar ${suffix}`;
+  clients.push(fixtureClientId);
+  const fixtureEnvironment = {
+    NODE_ENV: 'test',
+    DATABASE_URL: process.env.TEST_DATABASE_URL,
+    LOCAL_SMOKE_SITE_NAME: site.name,
+    LOCAL_SMOKE_LATITUDE: '0',
+    LOCAL_SMOKE_LONGITUDE: '0',
+    LOCAL_SMOKE_RADIUS_METERS: '100',
+    LOCAL_SMOKE_CLIENT_ID: fixtureClientId,
+    LOCAL_SMOKE_WORKPLACE_ID: fixtureWorkplaceId,
+    LOCAL_SMOKE_CLIENT_NAME: fixtureClientName,
+    LOCAL_SMOKE_WORKPLACE_NAME: fixtureWorkplaceName,
+  };
+  const priorEnvironment = new Map(
+    [...Object.keys(fixtureEnvironment), 'LOCAL_SMOKE_FIXTURE_ENABLED'].map((key) => [key, process.env[key]]),
+  );
+  try {
+    for (const [key, value] of Object.entries(fixtureEnvironment)) process.env[key] = value;
+    require('ts-node/register');
+    const { ensureFixture, readConfig } = require('../prisma/local-smoke-fixture.ts');
+    delete process.env.LOCAL_SMOKE_FIXTURE_ENABLED;
+    assert.throws(() => readConfig(), /LOCAL_SMOKE_FIXTURE_ENABLED=true/);
+
+    // The fixture creates absent stable IDs. A later operator config change
+    // must not silently move an already-created workplace.
+    process.env.LOCAL_SMOKE_FIXTURE_ENABLED = 'true';
+    await ensureFixture(db, readConfig());
+    const fixture = await db.workplace.findUniqueOrThrow({ where: { id: fixtureWorkplaceId } });
+    assert.equal(fixture.clientId, fixtureClientId);
+    assert.equal(fixture.siteId, site.id);
+    assert.equal(fixture.latitude, 0);
+    assert.equal(fixture.longitude, 0);
+    await db.client.update({
+      where: { id: fixtureClientId },
+      data: { name: `Editado manualmente ${suffix}` },
+    });
+    await db.workplace.update({
+      where: { id: fixtureWorkplaceId },
+      data: { name: `Lugar editado manualmente ${suffix}` },
+    });
+    process.env.LOCAL_SMOKE_LATITUDE = '10';
+    process.env.LOCAL_SMOKE_LONGITUDE = '10';
+    await ensureFixture(db, readConfig());
+  } finally {
+    for (const [key, value] of priorEnvironment) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  const preserved = await db.workplace.findUniqueOrThrow({ where: { id: fixtureWorkplaceId } });
+  assert.equal(preserved.latitude, 0);
+  assert.equal(preserved.longitude, 0);
+  assert.equal(preserved.name, `Lugar editado manualmente ${suffix}`);
+  assert.equal(
+    (await db.client.findUniqueOrThrow({ where: { id: fixtureClientId } })).name,
+    `Editado manualmente ${suffix}`,
+  );
+
+  const mobilePlaces = await request('/api/v1/workplaces');
+  assert.equal(mobilePlaces.status, 200, JSON.stringify(mobilePlaces.body));
+  assert.ok(
+    mobilePlaces.body.data.some(
+      (place) => place.id === fixtureWorkplaceId && place.name === `Lugar editado manualmente ${suffix}`,
+    ),
+  );
+  const result = await accepted(
+    input({
+      workplaceId: fixtureWorkplaceId,
+      latitude: preserved.latitude,
+      longitude: preserved.longitude,
+      occurredAt: '2000-01-01T00:00:00.000Z',
+      clientRequestId: randomUUID(),
+    }),
+    fixtureEmployee,
+  );
+  const persisted = await db.attendanceEvent.findUniqueOrThrow({ where: { id: result.eventId } });
+  assert.equal(persisted.workplaceId, fixtureWorkplaceId);
+  assert.equal(persisted.userId, fixtureEmployee.id);
+
+  const now = new Date();
+  const month = new Date(now.getTime() - 10800000).getUTCMonth() + 1;
+  const year = new Date(now.getTime() - 10800000).getUTCFullYear();
+  const monthly = await request(
+    `/api/v1/records/monthly?month=${month}&year=${year}&employeeId=${fixtureEmployee.id}`,
+    { user: admin },
+  );
+  assert.equal(monthly.status, 200, JSON.stringify(monthly.body));
+  const matchingRow = monthly.body.data.find((row) => row.workplace.id === fixtureWorkplaceId);
+  assert.ok(matchingRow, JSON.stringify(monthly.body));
+  assert.ok(
+    matchingRow.days.some((day) => day.state === 'PRESENT' && day.record.id === result.recordId),
+  );
+});
 test('HTTP DTO, GPS, timestamps and inactive structure reject atomically without events', async () => {
   const before = await db.attendanceEvent.count({ where: { userId: employee.id } });
   for (const patch of [

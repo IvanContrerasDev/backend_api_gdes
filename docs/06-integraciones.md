@@ -1,12 +1,12 @@
 # 06 — Integraciones externas
 
-**Estado:** interfaces EmailProvider/WhatsAppProvider, adapters log y adaptadores reales Resend/Meta implementados; estos últimos aprobados por revisión independiente. No se enviaron mensajes reales. Storage R2 implementado y aprobado por revisión independiente; Google implementado y aprobado. Producción rechaza log; usar adaptadores reales exige provisionar servicios y configuración.
+**Estado:** interfaces EmailProvider/WhatsAppProvider y adaptadores Resend/Meta; Mailpit local se implementa para capturar correos completos durante pruebas integradas. Storage R2 y Google aprobados. Mailpit no está permitido en producción y no envía mensajes externos.
 
 Todas detrás de interfaces para poder mockear en dev/test. Config por variables de entorno (ver `01-arquitectura-y-stack.md`).
 
 ## 1. Resend (email) — `EmailProvider`
 
-Interfaz: `sendEmail({ to, subject, html, idempotencyKey? })`. EMAIL_PROVIDER=log|resend. Log solo dev/test, redacta destinatario y muestra exclusivamente OTP de acceso deliberados. Resend usa POST /emails por HTTPS con Bearer, remitente EMAIL_FROM y transporte fetch por DI; timeout10s cubre headers y body, respuesta máxima16KiB y redirecciones rechazadas. Hasta3 intentos ante429/5xx/red, backoff250/500ms+jitter y misma Idempotency-Key/cuerpo. Una clave de negocio opcional identifica reintentos del mismo envío entre llamadas; si se omite, UUID por llamada. Respuesta con id significa aceptación del proveedor, no entrega al destinatario.
+Interfaz: `sendEmail({ to, subject, html, idempotencyKey? })`. EMAIL_PROVIDER=log|resend|mailpit. Mailpit usa `POST http://mailpit:8025/api/v1/send` con Basic auth dedicada; endpoint solo en red Compose, UI con credenciales separadas y volumen SQLite persistente. Publicar UI para Android requiere configurar `MAILPIT_BIND_ADDRESS` a la IP LAN del host y mantener autenticación. El adapter solo confirma aceptación con respuesta HTTP 2xx. `API_PUBLIC_URL` debe ser el origen LAN del host para links de verificación; no usar localhost en Android. Log redacta destinatario; Resend usa POST /emails por HTTPS con Bearer, remitente EMAIL_FROM y transporte fetch por DI; timeout10s cubre headers y body, respuesta máxima16KiB y redirecciones rechazadas. Hasta3 intentos ante429/5xx/red, backoff250/500ms+jitter y misma Idempotency-Key/cuerpo.
 
 Emails del sistema (spec §9.2/§9.3/§10.2):
 
@@ -72,4 +72,10 @@ SeaweedFS mononodo4.52, imagen `chrislusf/seaweedfs:4.52` con digest SHA256 fija
 
 `STORAGE_ENDPOINT=http://storage:8333`, público de referencia `http://localhost:8333`, región us-east-1 y opt-in HTTP local. Para teléfono sustituir público por IP LAN del PC antes de firmar; comandos, puertos y transporte en README.md. No modifica R2 productivo. Bucket/objeto anónimo y firma vencida deben rechazarse; prueba reproducible `test/runtime-local.smoke.cjs` y procedimiento en test/README.md. Admin por LAN sigue requiriendo validación HTTPS/cookies con su leader; pruebas HTTP no certifican navegador/Android.
 
-Verificación vigente B-01: revisión independiente aprobada, build/lint/Prisma y 193/193 pruebas sin fallos ni omisiones; smoke real API/PostgreSQL/SeaweedFS PASS en proyecto aislado desde DB vacía. Bytes/firma900s, anónimo/vencido403, recreación con metadata/objetos persistentes y fallo503 sin reemplazar original verificados. No se modificaron DB/volúmenes previos ni se enviaron notificaciones externas. Procedimiento en test/README.md; navegador/Android y proveedores de producción pendientes.
+Verificación vigente B-01: revisión independiente aprobada, build/lint/Prisma y 193/193 pruebas de esa ronda; smoke real API/PostgreSQL/SeaweedFS PASS en proyecto aislado desde DB vacía. Bytes/firma900s, anónimo/vencido403, recreación con metadata/objetos persistentes y fallo503 sin reemplazar original verificados. No se modificaron DB/volúmenes previos ni se enviaron notificaciones externas. Procedimiento en test/README.md; navegador/Android y proveedores de producción pendientes.
+
+## Fixture local mobile → backend → Admin (B-03)
+
+La fixture local F-012 está implementada y aprobada. `npm run prisma:local-smoke-fixture` solo crea cliente/lugar si se habilita explícitamente en `development|test` y se indican provincia existente, centro GPS real y radio; IDs estables y upserts sin actualización conservan los datos editados manualmente. El seed de cuentas local crea las ausentes y no resetea contraseñas, roles, estado ni perfil de las existentes. El detalle del comando y el recorrido para Android se mantiene en README.md.
+
+`test/attendance.e2e.cjs` cubre con API/PostgreSQL reales el descubrimiento del lugar por EMPLOYEE, CHECK_IN persistido y lectura en matriz mensual ADMIN, además del aislamiento de fixture respecto de otros casos. El 2026-11-09, `npm test` completo terminó con build PASS y 199/199 pruebas en la DB dedicada `gdes_f003_test`; la DB manual no se usó. Esta evidencia verifica backend y endpoints, no el dispositivo Android ni la interfaz Admin en navegador: Q-01 sigue abierto hasta completar pruebas de los consumidores.

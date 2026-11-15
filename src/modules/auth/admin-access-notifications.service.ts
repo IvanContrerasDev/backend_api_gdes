@@ -37,6 +37,9 @@ export class AdminAccessNotificationsService implements OnModuleInit, OnModuleDe
           'gdes:admin-access-outbox:v1',
           this.config.get('ADMIN_FRONTEND_URL'),
           this.config.get('EMAIL_PROVIDER'),
+          this.config.get('EMAIL_PROVIDER') === 'mailpit'
+            ? this.config.get('MAILPIT_SEND_URL')
+            : this.config.get('EMAIL_PROVIDER'),
           this.config.get('EMAIL_FROM'),
         ]),
       )

@@ -84,6 +84,60 @@ export class ResendEmailProvider implements EmailProvider {
   }
 }
 
+/** Local-only capture provider. The URL must resolve to the Compose Mailpit service. */
+@Injectable()
+export class MailpitEmailProvider implements EmailProvider {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly http: NotificationHttpTransport,
+  ) {}
+
+  async sendEmail(input: EmailInput): Promise<void> {
+    const urlValue = this.config.getOrThrow<string>('MAILPIT_SEND_URL');
+    const username = this.config.getOrThrow<string>('MAILPIT_SEND_API_USER');
+    const password = this.config.getOrThrow<string>('MAILPIT_SEND_API_PASSWORD');
+    let url: URL;
+    try {
+      url = new URL(urlValue);
+    } catch {
+      throw unavailable();
+    }
+    if (
+      url.protocol !== 'http:' ||
+      url.hostname !== 'mailpit' ||
+      url.port !== '8025' ||
+      url.pathname !== '/api/v1/send' ||
+      url.username || url.password || url.search || url.hash ||
+      !isEmail(input.to) || !input.subject.trim() || !input.html.trim() ||
+      !username.trim() || !password.trim()
+    ) throw unavailable();
+
+    const from = this.config.getOrThrow<string>('EMAIL_FROM');
+    const match = /^(?:(.*?)\s*<([^<>]+)>|([^<>\s]+))$/.exec(from.trim());
+    const fromEmail = match?.[2] ?? match?.[3];
+    if (!fromEmail || !isEmail(fromEmail)) throw unavailable();
+    const senderName = match?.[2] ? (match[1] ?? '').replace(/^"|"$/g, '').trim() : '';
+    const body = JSON.stringify({
+      From: { Email: fromEmail, ...(senderName ? { Name: senderName } : {}) },
+      To: [{ Email: input.to }],
+      Subject: input.subject,
+      HTML: input.html,
+    });
+    try {
+      const response = await notificationRequest(
+        this.http,
+        url.toString(),
+        { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}` },
+        body,
+      );
+      if (response.status >= 200 && response.status < 300) return;
+    } catch {
+      // Do not expose captured email content or transport errors to application logs.
+    }
+    throw unavailable();
+  }
+}
+
 @Injectable()
 export class MetaWhatsAppProvider implements WhatsAppProvider {
   constructor(

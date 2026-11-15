@@ -111,6 +111,9 @@ export class AuthLinksService implements OnModuleInit, OnModuleDestroy {
           origin: this.config.get('API_PUBLIC_URL'),
           admin: this.config.get('ADMIN_FRONTEND_URL'),
           provider: this.config.get('EMAIL_PROVIDER'),
+          destination: this.config.get('EMAIL_PROVIDER') === 'mailpit'
+            ? this.config.get('MAILPIT_SEND_URL')
+            : this.config.get('EMAIL_PROVIDER'),
           from: this.config.get('EMAIL_FROM'),
         }),
       )

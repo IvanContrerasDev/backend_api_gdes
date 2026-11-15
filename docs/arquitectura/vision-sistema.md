@@ -10,7 +10,7 @@ GdeS gestiona registros laborales: empleados marcan entrada/salida/ausencia con 
 |---|---|---|
 | `mobile_app_gdes/` | App Expo/React Native para EMPLOYEE; marcaciones, planillas, contingencia y perfil | Navegación y selectores reales; servicios mock, sesión local AsyncStorage sin tokens; cola offline existente pero no conectada a UI |
 | `admin_web_app/` | React/Vite; empleados, clientes/lugares, matriz mensual, planillas, legajos e inicio | Módulos y adaptadores mock/HTTP implementados; mocks como entorno operativo, integración real pendiente |
-| `backend_api_gdes/` | API NestJS/TypeScript, Prisma/PostgreSQL, monolito modular REST | Bootstrap, User/Site, infraestructura de errores/validación/guards y `GET /health`; módulos de auth/dominio aún no registrados |
+| `backend_api_gdes/` | API NestJS/TypeScript, Prisma/PostgreSQL, monolito modular REST | Módulos registrados de autenticación, estructura, empleados/perfil, asistencia/registros, archivos y métricas; API bajo `/api/v1` y `GET /health` sin prefijo; integración de clientes pendiente |
 
 Evidencia: `mobile_app_gdes/services/`, `stores/authStore.ts`; `admin_web_app/src/app/router.tsx`, `src/services/`, `src/mocks/`; `backend_api_gdes/src/app.module.ts`, `src/main.ts`, `prisma/schema.prisma`. No inferir endpoints disponibles de una spec, un enum o un adaptador.
 

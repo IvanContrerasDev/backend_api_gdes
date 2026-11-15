@@ -36,10 +36,25 @@ class EnvironmentVariables {
   @Matches(/\S/)
   RESEND_API_KEY!: string;
 
-  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'resend')
+  @ValidateIf((env: EnvironmentVariables) => ['resend', 'mailpit'].includes(env.EMAIL_PROVIDER))
   @IsString()
   @Matches(/\S/)
   EMAIL_FROM!: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'mailpit')
+  @IsString()
+  @Matches(/^http:\/\/mailpit:8025\/api\/v1\/send$/)
+  MAILPIT_SEND_URL!: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'mailpit')
+  @IsString()
+  @Matches(/\S/)
+  MAILPIT_SEND_API_USER!: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.EMAIL_PROVIDER === 'mailpit')
+  @IsString()
+  @Matches(/\S/)
+  MAILPIT_SEND_API_PASSWORD!: string;
 
   @ValidateIf((env: EnvironmentVariables) => env.WHATSAPP_PROVIDER === 'meta')
   @IsString()
@@ -109,7 +124,7 @@ class EnvironmentVariables {
   /** Dev switch: providers log to console instead of calling external services. */
   @IsString()
   @IsNotEmpty()
-  @IsIn(['log', 'resend'])
+  @IsIn(['log', 'resend', 'mailpit'])
   EMAIL_PROVIDER!: string;
 
   @IsString()
@@ -171,7 +186,7 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error('API_PUBLIC_URL must be a pure origin without credentials/path/query/hash');
   }
   if (validated.NODE_ENV === 'production') {
-    if (validated.EMAIL_PROVIDER === 'log' || validated.WHATSAPP_PROVIDER === 'log') {
+    if (validated.EMAIL_PROVIDER === 'log' || validated.EMAIL_PROVIDER === 'mailpit' || validated.WHATSAPP_PROVIDER === 'log') {
       throw new Error(
         'Log notification providers are not implemented for production; select real notification providers',
       );
@@ -187,7 +202,7 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
     throw new Error('Invalid WHATSAPP_PHONE_NUMBER_ID');
   }
   if (
-    validated.EMAIL_PROVIDER === 'resend' &&
+    ['resend', 'mailpit'].includes(validated.EMAIL_PROVIDER) &&
     !/^[^<>\s@]+@[^<>\s@]+(?:\.[^<>\s@]+)+(?:>)?$/.test(
       validated.EMAIL_FROM.match(/<([^<>]+)>$/)?.[1] ?? validated.EMAIL_FROM,
     )

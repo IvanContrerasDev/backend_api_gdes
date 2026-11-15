@@ -125,6 +125,58 @@ test('notification selectors accept only known independent providers and reject 
   );
 });
 
+test('Mailpit configuration is independent from Resend and rejected when invalid or selected in production', () => {
+  const example = Object.fromEntries(
+    readFileSync('.env.example', 'utf8')
+      .split('\n')
+      .filter((x) => x && !x.startsWith('#'))
+      .map((x) => {
+        const i = x.indexOf('=');
+        return [x.slice(0, i), x.slice(i + 1)];
+      }),
+  );
+  const local = {
+    ...example,
+    NODE_ENV: 'development',
+    EMAIL_PROVIDER: 'mailpit',
+    RESEND_API_KEY: undefined,
+    MAILPIT_SEND_URL: 'http://mailpit:8025/api/v1/send',
+    MAILPIT_SEND_API_USER: 'sender',
+    MAILPIT_SEND_API_PASSWORD: 'local-secret',
+    EMAIL_FROM: 'GdeS <auth@gdes.local>',
+  };
+  assert.doesNotThrow(() => validateEnv(local));
+  for (const [key, value] of [
+    ['MAILPIT_SEND_URL', 'http://localhost:8025/api/v1/send'],
+    ['MAILPIT_SEND_API_USER', ' '],
+    ['MAILPIT_SEND_API_PASSWORD', ' '],
+  ]) {
+    assert.throws(() => validateEnv({ ...local, [key]: value }), new RegExp(key));
+  }
+  assert.throws(() => validateEnv({ ...local, EMAIL_FROM: 'invalid sender' }), /EMAIL_FROM/);
+  assert.throws(() => validateEnv({ ...local, EMAIL_FROM: undefined }), /EMAIL_FROM/);
+  assert.throws(() => validateEnv({ ...local, NODE_ENV: 'production' }), /notification providers/);
+});
+
+test('Mailpit selector constructs only in local environments and rejects production', () => {
+  const { NotificationsModule } = require('../dist/modules/notifications/notifications.module');
+  const { EmailProvider } = providers;
+  const emailProvider = Reflect.getMetadata('providers', NotificationsModule).find(
+    (entry) => entry.provide === EmailProvider,
+  );
+  const factory = emailProvider.useFactory;
+  const localConfig = new ConfigService({ EMAIL_PROVIDER: 'mailpit', NODE_ENV: 'test' });
+  assert.ok(factory(localConfig, transport([])) instanceof providers.MailpitEmailProvider);
+  assert.throws(
+    () => factory(new ConfigService({ EMAIL_PROVIDER: 'mailpit', NODE_ENV: 'production' }), transport([])),
+    /not implemented for production/,
+  );
+  assert.throws(
+    () => factory(new ConfigService({ EMAIL_PROVIDER: 'invalid', NODE_ENV: 'test' }), transport([])),
+    /Invalid EMAIL_PROVIDER/,
+  );
+});
+
 test('Resend serializes authenticated request and keeps business idempotency key', async () => {
   assert.equal(typeof providers.ResendEmailProvider, 'function');
   const http = transport([reply({ id: 'email-id' })]);
@@ -147,6 +199,32 @@ test('Resend serializes authenticated request and keeps business idempotency key
     subject: email.subject,
     html: email.html,
   });
+});
+
+test('Mailpit sends full email using dedicated internal API auth and accepts only successful responses', async () => {
+  const localConfig = new ConfigService({ EMAIL_PROVIDER: 'mailpit', NODE_ENV: 'development', MAILPIT_SEND_URL: 'http://mailpit:8025/api/v1/send', MAILPIT_SEND_API_USER: 'sender', MAILPIT_SEND_API_PASSWORD: 'mailpit-secret', EMAIL_FROM: 'GdeS <auth@gdes.local>' });
+  const http = transport([new Response(null, { status: 202 })]);
+  await new providers.MailpitEmailProvider(localConfig, http).sendEmail({ ...email, html: '<a href="https://api.local/verify?token=bearer">Verify</a>' });
+  const request = http.requests[0];
+  assert.equal(request.url, 'http://mailpit:8025/api/v1/send');
+  assert.equal(request.headers.Authorization, `Basic ${Buffer.from('sender:mailpit-secret').toString('base64')}`);
+  assert.deepEqual(JSON.parse(request.body), { From: { Email: 'auth@gdes.local', Name: 'GdeS' }, To: [{ Email: email.to }], Subject: email.subject, HTML: '<a href="https://api.local/verify?token=bearer">Verify</a>' });
+  for (const response of [new Response(null, { status: 401 }), new Response(null, { status: 500 })]) {
+    await assert.rejects(new providers.MailpitEmailProvider(localConfig, transport([response])).sendEmail(email), unavailable);
+  }
+});
+
+test('Mailpit timeout and unavailable transport fail with redacted retryable errors', async () => {
+  const localConfig = new ConfigService({ EMAIL_PROVIDER: 'mailpit', NODE_ENV: 'test', MAILPIT_SEND_URL: 'http://mailpit:8025/api/v1/send', MAILPIT_SEND_API_USER: 'sender', MAILPIT_SEND_API_PASSWORD: 'mailpit-secret', EMAIL_FROM: 'auth@gdes.local' });
+  for (const failure of [new DOMException('aborted', 'AbortError'), new Error('mailpit unreachable')]) {
+    const http = transport([failure]);
+    await assert.rejects(
+      new providers.MailpitEmailProvider(localConfig, http).sendEmail({ ...email, html: '<a href="https://api.local/verify?token=secret-bearer">verify</a>' }),
+      unavailable,
+    );
+    assert.equal(http.requests.length, 1);
+    assert.equal(http.requests[0].signal.aborted, false);
+  }
 });
 
 test('Resend retries only transient failures, reusing exact payload and one generated key', async () => {

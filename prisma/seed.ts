@@ -1,8 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 
-const prisma = new PrismaClient();
-
 /**
  * Seed: provinces catalog (sites). Fixed list shared with mobile
  * (`mobile_app_gdes/constants/data.ts`). Idempotent (upsert by name).
@@ -15,7 +13,11 @@ const LOCAL_USERS = [
   { role: 'SUPER_ADMIN', email: 'seed.super-admin@gdes.local', employeeId: '99000004' },
 ] as const;
 
-async function main(): Promise<void> {
+export async function seedDatabase(
+  prisma: PrismaClient,
+  nodeEnvironment = process.env.NODE_ENV,
+  localSeedPassword = process.env.LOCAL_SEED_PASSWORD || 'GdesLocal2026!',
+): Promise<void> {
   for (const name of SITES) {
     await prisma.site.upsert({
       where: { name },
@@ -24,18 +26,15 @@ async function main(): Promise<void> {
     });
   }
   let seededUsers = 0;
-  if (process.env.NODE_ENV !== 'production') {
+  if (nodeEnvironment !== 'production') {
     const site = await prisma.site.findUniqueOrThrow({ where: { name: 'San Juan' } });
-    const passwordHash = await argon2.hash(process.env.LOCAL_SEED_PASSWORD || 'GdesLocal2026!');
+    const passwordHash = await argon2.hash(localSeedPassword);
     for (const user of LOCAL_USERS) {
       await prisma.user.upsert({
         where: { email: user.email },
-        update: {
-          passwordHash,
-          role: user.role,
-          accountStatus: 'ACTIVE',
-          emailVerifiedAt: new Date(),
-        },
+        // This seed is additive: existing local accounts may contain operator
+        // edits and must never be reset by a restart or repeated catalog seed.
+        update: {},
         create: {
           firstName: 'Usuario',
           lastName: user.role,
@@ -57,15 +56,22 @@ async function main(): Promise<void> {
     }
   }
   console.log(
-    `Seed complete: ${SITES.length} sites (provinces), ${seededUsers} local users${seededUsers ? ' (shared local password)' : ''}.`,
+    `Seed complete: ${SITES.length} sites (provinces), ${seededUsers} local users ensured; shared local password applies only to newly created accounts.`,
   );
 }
 
-main()
-  .catch((error: unknown) => {
+async function main(): Promise<void> {
+  const prisma = new PrismaClient();
+  try {
+    await seedDatabase(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+if (require.main === module) {
+  main().catch((error: unknown) => {
     console.error('Seed failed:', error);
     process.exitCode = 1;
-  })
-  .finally(() => {
-    void prisma.$disconnect();
   });
+}

@@ -420,6 +420,29 @@ test('outbox workers isolate namespaces and stale claims cannot overwrite accept
   assert.equal(messages.at(-1).html,messages[0].html);
   original.onModuleInit();
 });
+test('admin notification provider failure leaves the outbox unaccepted and retryable',async()=>{
+  const state=await pending();
+  const {AdminAccessNotificationsService}=require('../dist/modules/auth/admin-access-notifications.service');
+  const worker=app.get(AdminAccessNotificationsService);await worker.onModuleDestroy();
+  const row=await db.adminAccessNotification.findFirstOrThrow({where:{requestId:state.request.id,recipientId:root.id,kind:'DECISION'}});
+  await db.adminAccessNotification.update({where:{id:row.id},data:{completedAt:null,acceptedAt:null,attempts:0,lockedUntil:null,nextAttemptAt:new Date(0)}});
+  failEmail=item=>item.idempotencyKey==='admin-access/'+row.id;
+  try {
+    await worker.drain();
+    const failed=await db.adminAccessNotification.findUniqueOrThrow({where:{id:row.id}});
+    assert.equal(failed.acceptedAt,null,'provider failure must not persist acceptance');
+    assert.equal(failed.completedAt,null,'provider failure must leave the notification incomplete');
+    assert.equal(failed.lockedUntil,null,'failed claim must release its lease');
+    assert.equal(failed.attempts,1);
+    failEmail=()=>false;
+    await db.adminAccessNotification.update({where:{id:row.id},data:{nextAttemptAt:new Date(0)}});
+    await worker.drain();
+    const retried=await db.adminAccessNotification.findUniqueOrThrow({where:{id:row.id}});
+    assert.ok(retried.acceptedAt);assert.ok(retried.completedAt);
+  } finally {
+    failEmail=()=>false;worker.onModuleInit();
+  }
+});
 test('result notification survives acceptance failure and restart without changing decision or message',async()=>{
   const state=await pending();
   failEmail=item=>item.to===state.user.email&&item.subject.includes('Resultado');

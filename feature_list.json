@@ -174,8 +174,8 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
-      "taskSpec": null,
+      "estado": "in_progress",
+      "taskSpec": "docs/tasks/011-local-email-capture.md",
       "criterios": [
         "B-02: proveedor de captura de email completo solo desarrollo, bandeja local persistente sin envíos externos y producción lo rechaza",
         "Namespaces de outbox distinguen destino local; conservar TTL, fencing, aceptación real y claves de negocio estables",
@@ -190,7 +190,7 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
         "B-03: fixture local opt-in e idempotente de cliente/lugar con centro GPS explícito elegido por el usuario y cuentas actuales por rol",

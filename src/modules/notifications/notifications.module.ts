@@ -7,6 +7,7 @@ import {
 import {
   EmailProvider,
   LogNotifications,
+  MailpitEmailProvider,
   MetaWhatsAppProvider,
   ResendEmailProvider,
   WhatsAppProvider,
@@ -22,6 +23,10 @@ import {
         switch (config.get<string>('EMAIL_PROVIDER')) {
           case 'resend':
             return new ResendEmailProvider(config, http);
+          case 'mailpit':
+            if (config.get<string>('NODE_ENV') === 'production')
+              throw new Error('Mailpit email provider is not implemented for production');
+            return new MailpitEmailProvider(config, http);
           case 'log':
             return new LogNotifications(config);
           default:
