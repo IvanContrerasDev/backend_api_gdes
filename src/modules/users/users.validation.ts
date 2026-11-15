@@ -123,7 +123,9 @@ export function accountStatus(value: unknown): AccountStatus {
 }
 export function userQuery(value: Record<string, unknown>) {
   if (
-    Object.keys(value).some((key) => !['search', 'accountStatus', 'page', 'pageSize'].includes(key))
+    Object.keys(value).some(
+      (key) => !['search', 'accountStatus', 'siteId', 'page', 'pageSize'].includes(key),
+    )
   )
     invalid();
   const number = (v: unknown, fallback: number, max: number) => {
@@ -144,6 +146,7 @@ export function userQuery(value: Record<string, unknown>) {
   return {
     page,
     pageSize,
+    siteId: value.siteId === undefined ? undefined : uuid(value.siteId, 'INVALID_SITE'),
     search: (value.search as string | undefined)?.trim(),
     accountStatus:
       value.accountStatus === undefined ? undefined : accountStatus(value.accountStatus),

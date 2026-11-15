@@ -17,12 +17,12 @@ export class PasswordPolicyService {
       throw new ApiException(
         400,
         'WEAK_PASSWORD',
-        'La contraseña debe tener entre 12 y 128 caracteres y no ser común o comprometida conocida',
+        'La contraseña debe tener entre 8 y 30 caracteres y no ser común o comprometida conocida',
       );
     };
     if (typeof value !== 'string') weak();
     const password = value as string;
-    if ([...password].length < 12 || [...password].length > 128) weak();
+    if ([...password].length < 8 || [...password].length > 30) weak();
     const normalized = password.normalize('NFKC').trim().toLowerCase();
     // Check simple case/space and trailing number/symbol variants without
     // modifying the original value passed to Argon2.

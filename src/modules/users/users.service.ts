@@ -156,9 +156,11 @@ export class UsersService {
     throw error;
   }
   async list(query: ReturnType<typeof userQuery>) {
+    await this.site(query.siteId);
     const where: Prisma.UserWhereInput = {
       role: UserRole.EMPLOYEE,
       accountStatus: query.accountStatus,
+      siteId: query.siteId,
     };
     if (query.search) {
       const contains = query.search.replace(/[\\%_]/g, '\\$&');

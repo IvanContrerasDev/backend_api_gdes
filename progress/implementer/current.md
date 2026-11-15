@@ -13,7 +13,7 @@ Reverificación tras el último veredicto: el fuente y `dist/config/env.validati
 
 El runtime real Mailpit/API y `API_PUBLIC_URL` LAN siguen pendientes del orchestrator; no se modificaron contenedores.
 
-## Resultado final
+## Resultado previo F-011
 
 - Estado: done (solo los dos ítems de cambios requeridos; falta review independiente).
 - Spec: `docs/tasks/011-local-email-capture.md`.

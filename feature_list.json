@@ -215,6 +215,23 @@
         "Regresiones de archivos/histórico/métricas y revisión independiente aprobadas"
       ],
       "documentation": "docs/06-integraciones.md"
+    },
+    {
+      "id": "F-014",
+      "titulo": "Mejoras integración: política de contraseña 8–30 y filtro provincial de usuarios",
+      "apps": [
+        "backend",
+        "admin",
+        "mobile"
+      ],
+      "estado": "done",
+      "taskSpec": null,
+      "criterios": [
+        "Nuevos secretos 8–30 Unicode en todos los flujos con compatibilidad legada y anti enumeración",
+        "GET /users con siteId opcional validado, filtros y paginación consistentes",
+        "Tests, build/lint y reviewer independiente aprobados"
+      ],
+      "documentation": "docs/04-auth-y-seguridad.md"
     }
   ]
 }

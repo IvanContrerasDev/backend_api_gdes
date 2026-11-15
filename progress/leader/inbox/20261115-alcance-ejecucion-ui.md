@@ -1,0 +1,3 @@
+# Coordinación de alcance — ejecución de mejoras UI
+
+El orchestrator detectó cambios adicionales concurrentes en el contrato común (feedback WEAK_PASSWORD, conflicto de identidad y lectura de todos los roles). Preservarlos. Esta ejecución responde a los nueve ajustes UI de `experiencia-usuario.md` y al inbox de contratos: F-014 cubre filtro provincial y rango compartido. No ampliar automáticamente alcance hacia esas iniciativas adicionales, ni sobreescribir cambios ajenos. Si otra tarea usa los mismos archivos, dejar la dependencia explícita. Consultar este inbox para coordinar ownership; eliminar al incorporar la restricción al estado vigente.

@@ -340,10 +340,53 @@ test('input validation rejects invalid civil dates, fields, sites and pagination
   ])
     await error('/api/v1/users?' + query, 'INVALID_USER_DATA', 400);
 });
+test('users province filter validates UUID and existence before returning a list', async () => {
+  for (const value of ['bad', '', randomUUID(), `${site.id}&siteId=${site.id}`])
+    await error(`/api/v1/users?siteId=${value}`, 'INVALID_SITE', 400);
+});
+test('users filter employee province before search, status, count and pagination, independent of workplace province', async () => {
+  const other = await db.site.findFirstOrThrow({ where: { id: { not: site.id } } });
+  const marker = `province-${suffix}`;
+  const a = await create({ firstName: marker, lastName: 'A' });
+  const b = await create({ firstName: marker, lastName: 'B' });
+  const inactive = await create({ firstName: marker, lastName: 'C' });
+  const foreign = await create({ firstName: marker, lastName: 'D', siteId: other.id });
+  await db.user.update({ where: { id: inactive.id }, data: { accountStatus: 'INACTIVE' } });
+  const client = await db.client.create({ data: { name: marker } });
+  const workplace = await db.workplace.create({ data: { name: marker, clientId: client.id,
+    siteId: other.id, latitude: -31, longitude: -68, radiusMeters: 100 } });
+  const record = await db.attendanceRecord.create({ data: { userId: a.id, workplaceId: workplace.id,
+    clientId: client.id, siteId: other.id, date: new Date('2026-11-01'), recordStatus: 'INCOMPLETE', origin: 'AUTOMATIC' } });
+  try {
+    const query = `/api/v1/users?siteId=${site.id.toUpperCase()}&search=${marker}&accountStatus=ACTIVE&pageSize=1`;
+    const first = await request(query);
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.deepEqual(first.body.data.map(row => row.id), [a.id]);
+    assert.deepEqual(first.body.pagination, { page: 1, pageSize: 1, totalItems: 2, totalPages: 2 });
+    const second = await request(query + '&page=2');
+    assert.deepEqual(second.body.data.map(row => row.id), [b.id]);
+    assert.equal(second.body.pagination.totalItems, 2);
+    const third = await request(query + '&page=3');
+    assert.deepEqual(third.body.data, []);
+    assert.equal(third.body.pagination.totalItems, 2);
+    const foreignList = await request(`/api/v1/users?siteId=${other.id}&search=${marker}`);
+    assert.deepEqual(foreignList.body.data.map(row => row.id), [foreign.id]);
+    const global = await request(`/api/v1/users?search=${marker}`);
+    assert.equal(global.body.pagination.totalItems, 4);
+    const inactiveList = await request(`/api/v1/users?siteId=${site.id}&search=${marker}&accountStatus=INACTIVE`);
+    assert.deepEqual(inactiveList.body.data.map(row => row.id), [inactive.id]);
+  } finally {
+    await db.attendanceRecord.delete({ where: { id: record.id } });
+    await db.workplace.delete({ where: { id: workplace.id } });
+    await db.client.delete({ where: { id: client.id } });
+  }
+});
 test('local corpus rejects length-valid common passwords and simple variants, permits Unicode spaces without composition', async () => {
   for (const initialPassword of [
     'short',
-    'x'.repeat(129),
+    'x'.repeat(31),
+    '🪻'.repeat(7),
+    '🪻'.repeat(31),
     'masterbaiting',
     'Unbelievable',
     'unbelievable123!',
@@ -353,7 +396,7 @@ test('local corpus rejects length-valid common passwords and simple variants, pe
       method: 'POST',
       body: input({ initialPassword }),
     });
-  for (const initialPassword of ['árbol nieve río montaña', '😀'.repeat(12), 'x'.repeat(128)])
+  for (const initialPassword of ['árbol nieve río montaña', '😀'.repeat(8), '😀'.repeat(30), 'x'.repeat(30), ' río 🪻x '])
     await create({ initialPassword });
 });
 test('email, DNI and employeeId uniqueness are global, normalized and safe under concurrent requests', async () => {

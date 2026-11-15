@@ -14,10 +14,10 @@
 ## Contraseñas
 
 - Hash con **Argon2**.
-- Política aprobada P-06 compartida: 12–128 caracteres, admite espacios y Unicode, sin reglas obligatorias de mayúsculas/símbolos; backend rechaza comunes/comprometidas. La validación actual de mobile difiere y deberá migrar, sin trasladarla como contrato vigente.
+- Política compartida implementada para nuevas contraseñas: **8–30 puntos de código Unicode, inclusivos**, admite espacios y Unicode, sin reglas obligatorias de mayúsculas/símbolos; backend rechaza comunes/comprometidas. Aplica a registro, alta por Admin, nuevas solicitudes administrativas tras OTP y restablecimiento. Login y comprobación de contraseña actual conservan compatibilidad con secretos legados fuera del rango; no se aplica retroactivamente la política de alta.
 - Empleado creado por admin: contraseña inicial seteada por el admin, habilitado inmediato, sin cambio obligatorio ni verificación de email — `emailVerifiedAt` se setea en el alta (spec §11.1).
-- Comprobación local implementada: corpus SecLists10k versionado con commit/checksum/LICENCIA en resources/passwords. Compara NFKC, case, espacios y sufijos simples sin cambiar el secreto original para Argon2; 12–128 puntos de código Unicode. Sin HIBP ni llamadas de red. No cubre todas las filtraciones; mantener lista actualizada es una limitación operativa explícita.
-- La contraseña nunca se puede revisualizar (§11.1).
+- Comprobación local implementada: corpus SecLists10k versionado con commit/checksum/LICENCIA en resources/passwords. Compara NFKC, case, espacios y sufijos simples sin cambiar el secreto original para Argon2; 8–30 puntos de código Unicode. Sin HIBP ni llamadas de red. No cubre todas las filtraciones; mantener lista actualizada es una limitación operativa explícita.
+- La contraseña almacenada nunca se devuelve ni se puede recuperar para visualizar (§11.1); el control de mostrar/ocultar del formulario opera solo sobre el valor que escribe la persona.
 
 ## Flujos
 

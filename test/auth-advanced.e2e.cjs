@@ -296,7 +296,8 @@ test('registration validates exactly ten fields with users civil/profile rules a
     { firstName: ' ' },
     { password: 'password12345' },
     { password: 'corta' },
-    { password: '🪻'.repeat(129) },
+    { password: '🪻'.repeat(7) },
+    { password: '🪻'.repeat(31) },
     { role: 'ADMIN' },
     { emailVerifiedAt: new Date().toISOString() },
   ])
@@ -306,16 +307,34 @@ test('registration validates exactly ten fields with users civil/profile rules a
   error(await request('/auth/register', { body: missing }), 422, 'VALIDATION_ERROR');
 });
 
-test('a valid128 code-point password stays usable after registration and email verification', async () => {
-  const secret = '🪻'.repeat(128);
-  const challenge = await register(profile({ password: secret }));
-  const user = await verifyRegistration(challenge);
-  const { token } = tokenFromLastEmail(user.email);
-  assert.equal(
-    (await request('/auth/email/verify?token=' + encodeURIComponent(token))).status,
-    302,
-  );
-  assert.ok((await mobile(user, secret)).tokens.accessToken);
+test('registration accepts 8 and 30 Unicode code points without trimming and rejects 7 and 31', async () => {
+  for (const secret of ['🪻'.repeat(8), '🪻'.repeat(30), ' río 🪻x ']) {
+    const challenge = await register(profile({ password: secret }));
+    const user = await verifyRegistration(challenge);
+    const { token } = tokenFromLastEmail(user.email);
+    assert.equal((await request('/auth/email/verify?token=' + encodeURIComponent(token))).status, 302);
+    const row = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    assert.ok(await argon2.verify(row.passwordHash, secret));
+    if (secret.trim() !== secret) assert.equal(await argon2.verify(row.passwordHash, secret.trim()), false);
+    assert.ok((await mobile(user, secret)).tokens.accessToken);
+  }
+});
+test('password reset applies Unicode 8–30 boundaries and preserves spaces while login accepts legacy secrets', async () => {
+  for (const secret of ['🪻'.repeat(8), '🪻'.repeat(30), ' río 🪻x ']) {
+    const user = await fixture();
+    const token = await recovery(user);
+    for (const rejected of ['🪻'.repeat(7), '🪻'.repeat(31)])
+      error(await request('/auth/password-reset', { body: { token, newPassword: rejected } }), 422, 'VALIDATION_ERROR');
+    const result = await request('/auth/password-reset', { body: { token, newPassword: secret } });
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    assert.ok(await argon2.verify((await db.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, secret));
+    assert.ok((await mobile(user, secret)).tokens.accessToken);
+  }
+  for (const secret of ['oldpass', '🪻'.repeat(128)]) {
+    const user = await fixture();
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(secret) } });
+    assert.ok((await mobile(user, secret)).tokens.accessToken);
+  }
 });
 
 test('registration uniqueness is global with original register error codes and races do not create twice', async () => {

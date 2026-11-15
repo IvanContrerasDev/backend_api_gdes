@@ -19,7 +19,7 @@ Object.assign(process.env, example, {
   JWT_ACCESS_SECRET: 'f008c-test-access', JWT_REFRESH_SECRET: 'f008c-test-refresh',
 });
 const db = new PrismaClient({ datasources: { db: { url: process.env.TEST_DATABASE_URL } } });
-const run = randomUUID(), password = 'nubes de lapacho sobre la sierra';
+const run = randomUUID(), password = 'nubes de lapacho en la sierra';
 const owned = [], profiles = [], emails = [], acceptedEmails = [], otps = [];
 let serial = Math.floor(Math.random() * 100000), app, base, site, root;
 let failEmail = () => false;
@@ -160,12 +160,34 @@ test('initial ten-field requests remain neutral and cannot create accounts or ch
   assert.equal(await db.adminAccessRequest.count({ where: { userId: existing.user.id } }), 0);
 });
 test('legacy existing secrets and weak new secrets share the same initial response but only existing identity can use legacy password', async () => {
-  const existing = await fixture({}, 'legacy pass');
-  const old = await start(existing.input), fresh = await start(profile({ password: 'legacy pass' }));
+  const existing = await fixture({}, 'legacy!');
+  const old = await start(existing.input), fresh = await start(profile({ password: 'legacy!' }));
   assert.equal(old.message, fresh.message); submitted(await verify(old));
   error(await verify(fresh), 422, 'VALIDATION_ERROR');
   const before = existing.user; const after = await db.user.findUniqueOrThrow({ where: { id: before.id } });
   assert.equal(after.passwordHash, before.passwordHash); assert.equal(after.role, 'TO_BE_ADMIN');
+});
+test('new admin applicants enforce Unicode 8–30 only after OTP, with spaces preserved and legacy long accounts accepted', async () => {
+  for (const secret of ['🪻'.repeat(8), '🪻'.repeat(30), ' río 🪻x ']) {
+    const input = profile({ password: secret });
+    const initial = await start(input);
+    submitted(await verify(initial));
+    const user = await db.user.findUniqueOrThrow({ where: { email: input.email } });
+    owned.push(user.id);
+    assert.ok(await argon2.verify(user.passwordHash, secret));
+    if (secret.trim() !== secret) assert.equal(await argon2.verify(user.passwordHash, secret.trim()), false);
+  }
+  for (const secret of ['🪻'.repeat(7), '🪻'.repeat(31)]) {
+    const input = profile({ password: secret });
+    const challenge = await start(input);
+    assert.equal(await db.user.count({ where: { email: input.email } }), 0);
+    error(await verify(challenge), 422, 'VALIDATION_ERROR');
+    assert.equal(await db.user.count({ where: { email: input.email } }), 0);
+  }
+  const existing = await fixture({}, '🪻'.repeat(128));
+  const before = existing.user.passwordHash;
+  submitted(await verify(await start(existing.input)));
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: existing.user.id } })).passwordHash, before);
 });
 test('new verified applicants become TO_BE_ADMIN without JWT and use one signed seven-day decision capability', async () => {
   const input = profile({ firstName: '<b>Rocío</b>' }); const initial = await start(input);
