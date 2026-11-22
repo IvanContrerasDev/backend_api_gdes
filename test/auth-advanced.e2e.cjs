@@ -294,10 +294,6 @@ test('registration validates exactly ten fields with users civil/profile rules a
     { dni: '123' },
     { siteId: randomUUID() },
     { firstName: ' ' },
-    { password: 'password12345' },
-    { password: 'corta' },
-    { password: '🪻'.repeat(7) },
-    { password: '🪻'.repeat(31) },
     { role: 'ADMIN' },
     { emailVerifiedAt: new Date().toISOString() },
   ])
@@ -324,7 +320,7 @@ test('password reset applies Unicode 8–30 boundaries and preserves spaces whil
     const user = await fixture();
     const token = await recovery(user);
     for (const rejected of ['🪻'.repeat(7), '🪻'.repeat(31)])
-      error(await request('/auth/password-reset', { body: { token, newPassword: rejected } }), 422, 'VALIDATION_ERROR');
+      error(await request('/auth/password-reset', { body: { token, newPassword: rejected } }), 400, 'WEAK_PASSWORD');
     const result = await request('/auth/password-reset', { body: { token, newPassword: secret } });
     assert.equal(result.status, 200, JSON.stringify(result.body));
     assert.ok(await argon2.verify((await db.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, secret));
@@ -668,8 +664,8 @@ test('signed links persist hashes only, enforce exact purpose TTL and do not acc
   const token = await recovery(user);
   error(
     await request('/auth/password-reset', { body: { token, newPassword: 'password12345' } }),
-    422,
-    'VALIDATION_ERROR',
+    400,
+    'WEAK_PASSWORD',
   );
   assert.equal(
     (
@@ -1302,4 +1298,24 @@ test('registration verification commits a durable email intent and returns202 wh
     release();
     provider.sendEmail = original;
   }
+});
+
+test('register and reset preserve actionable password policy errors separately from generic validation', async () => {
+  const user = await fixture();
+  const token = await recovery(user);
+  for (const [password, message] of [
+    ['🪻'.repeat(7), 'La contraseña debe tener entre 8 y 30 caracteres'],
+    ['🪻'.repeat(31), 'La contraseña debe tener entre 8 y 30 caracteres'],
+    ['unbelievable', 'La contraseña es demasiado común o una variante conocida. Elegí otra contraseña menos predecible'],
+    ['Unbelievable123!', 'La contraseña es demasiado común o una variante conocida. Elegí otra contraseña menos predecible'],
+  ]) {
+    for (const response of [await request('/auth/register', { body: profile({ password }) }),
+      await request('/auth/password-reset', { body: { token, newPassword: password } })]) {
+      error(response, 400, 'WEAK_PASSWORD');
+      assert.deepEqual(response.body, { error: { code: 'WEAK_PASSWORD', message, retryable: false } });
+    }
+  }
+  error(await request('/auth/register', { body: profile({ password: 123 }) }), 422, 'VALIDATION_ERROR');
+  error(await request('/auth/register', { body: profile({ phone: 'bad', password: 'short' }) }), 422, 'VALIDATION_ERROR');
+  error(await request('/auth/password-reset', { body: { token: '', newPassword: 'short' } }), 422, 'VALIDATION_ERROR');
 });

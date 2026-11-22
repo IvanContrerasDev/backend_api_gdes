@@ -439,3 +439,38 @@ test('Timesheet persistence enforces period, positive size/sequence and scoped s
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual(counts(r.body.data), { ...zero, pendingTimesheets: 2 });
 });
+
+test('pending contingency counts globally while every provincial breakdown excludes it without employee attribution', async () => {
+  const who = await person();
+  const p = await place();
+  await sheet(who, p, 3, 2057);
+  for (const [month, year, status, sequenceNumber] of [
+    [3, 2057, 'PENDING', 1],
+    [3, 2057, 'PENDING', 2],
+    [3, 2057, 'LOADED', 3],
+    [3, 2057, 'ERROR', 4],
+    [4, 2057, 'PENDING', 1],
+    [3, 2058, 'PENDING', 1],
+  ]) {
+    await sheet(who, p, month, year, status, { workplaceId: null, sequenceNumber });
+  }
+  const r = await metrics('month=3&year=2057');
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(counts(r.body.data), { ...zero, pendingTimesheets: 3 });
+  assert.equal(
+    r.body.data.byProvince.reduce((sum, p) => sum + p.pendingTimesheets, 0),
+    1,
+  );
+  assert.deepEqual(counts(r.body.data.byProvince.find((s) => s.id === p.siteId)), {
+    ...zero,
+    pendingTimesheets: 1,
+  });
+  assert.ok(
+    r.body.data.byProvince
+      .filter((s) => s.id !== p.siteId)
+      .every((s) => Object.values(counts(s)).every((n) => n === 0)),
+  );
+  const nullOnly = await metrics('month=4&year=2057');
+  assert.equal(nullOnly.body.data.pendingTimesheets, 1);
+  assert.ok(nullOnly.body.data.byProvince.every((p) => p.pendingTimesheets === 0));
+});

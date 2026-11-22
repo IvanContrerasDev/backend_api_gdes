@@ -82,7 +82,7 @@ Registro de empleado desde mobile. Request:
   "phone": "...", "employeeId": "...", "dni": "...", "address": "...",
   "siteId": "<uuid>", "birthDate": "YYYY-MM-DD" }
 ```
-Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`RegistrationChallenge.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 422 `VALIDATION_ERROR`.
+Valida unicidad y campos, y envía OTP por WhatsApp. **No crea el `User` todavía**: el payload queda guardado en el challenge OTP (`RegistrationChallenge.payload`) y el usuario se crea recién al verificar el código (así no existen cuentas a medias en la tabla). Tras la verificación del OTP el usuario queda **pendiente de verificación de email** (magic link — ver flujo 4 de `04-auth-y-seguridad.md`). Response 202: `{ "data": { "otpRequired": true, "challengeId": "<uuid>" } }`. Errores: 409 `USER_ALREADY_EXISTS` (email), 409 `EMPLOYEE_ID_ALREADY_EXISTS` (legajo), 409 `DNI_ALREADY_EXISTS`, 400 `WEAK_PASSWORD` (rango o lista/variante), 422 `VALIDATION_ERROR` (otros datos).
 
 ### GET /auth/email/verify
 Destino del magic link de verificación de email (botón "confirmar" del correo). Query: `?token=<string>` (firmado, un solo uso; TTL ratificado 24 h, ver 04). Marca `emailVerifiedAt` del usuario y redirige (302) al deep link de mobile (`MOBILE_DEEP_LINK_SCHEME`) con el resultado. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`.
@@ -94,7 +94,7 @@ Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "
 Request: `{ "email": string }`. Respuesta **siempre neutra** 202: `{ "data": { "sent": true } }` (exista o no la cuenta). Encola una intención neutral; worker envía a cuenta ACTIVE existente el enlace de1h/un solo uso, sin esperar al proveedor en la respuesta.
 
 ### POST /auth/password-reset
-Request: `{ "token": string, "newPassword": string }` → 200 `{ "data": { "updated": true } }`. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`, 422 `VALIDATION_ERROR` (política de contraseña).
+Request: `{ "token": string, "newPassword": string }` → 200 `{ "data": { "updated": true } }`. Errores: 410 `TOKEN_EXPIRED`, 401 `INVALID_TOKEN`, 400 `WEAK_PASSWORD` (política), 422 `VALIDATION_ERROR` (estructura/tipos).
 
 ### POST /auth/refresh
 Request: `{ "refreshToken": string }` → 200 `{ "data": { "tokens": { "accessToken", "refreshToken", "expiresIn" } } }` (rotación). Reuso detectado → 401 `REFRESH_TOKEN_REUSED` y revocación de toda la cadena.
@@ -142,7 +142,7 @@ Rol: EMPLOYEE. Estado actual del empleado para derivar `isWorking` (resuelve deu
 Response: `{ "data": { "isWorking": true, "since": "2026-09-15T12:03:00.000Z", "workplaceId": "<uuid>" | null } }`.
 
 ### POST /timesheets
-Rol: EMPLOYEE (o ADMIN, ver sección admin). `multipart/form-data`: campos `workplaceId` (requerido), `month`, `year`, y uno o varios `files`. Máx. 20 MiB/archivo y 10 archivos por request; lote atómico, formatos permitidos.
+Rol: EMPLOYEE (o ADMIN, ver sección admin). `multipart/form-data`: campos `workplaceId` (UUID ordinario o string multipart `"null"` para contingencia explícita), `month`, `year`, y uno o varios `files`. Máx. 20 MiB/archivo y 10 archivos por request; lote atómico, formatos permitidos.
 Response 201: `{ "data": { "timesheetIds": ["<uuid>"], "message": "La planilla fue cargada correctamente." } }`.
 Errores: 422 `FILE_TOO_LARGE`, 422 `FILE_TYPE_NOT_ALLOWED`, 422 `VALIDATION_ERROR`.
 
@@ -167,9 +167,9 @@ Response: `{ "data": { "id", "firstName", "lastName", "dni", "cuil", "employeeId
   "byProvince": [{ "id": "<uuid>", "name": "Catamarca", "pendingTimesheets": 0, "incompleteRecords": 0, "pendingReviewRecords": 0, "recordsWithAbsence": 0 }] } }
 ```
 
-El arreglo incluye todas las provincias de Site (seed seis), incluso ceros; orden nombre COLLATE C y UUID. Totales generales coinciden con suma del desglose. Planillas PENDING se cuentan por month/year del período, no createdAt. Registros se cuentan por date civil GMT-3 del mes: INCOMPLETE, reviewStatus PENDING y existencia de al menos un intervalo ABSENCE respectivamente. Una ausencia cuenta el registro una vez, aunque tenga varias; condiciones pueden coexistir. NONE/APPROVED/MANUAL_LOADED no suman revisión pendiente. No hay paginación ni exclusión de históricos inactivos.
+El arreglo incluye todas las provincias de Site (seed seis), incluso ceros; orden nombre COLLATE C y UUID. Contadores de registros coinciden con la suma del desglose; pendingTimesheets global incluye también contingencias PENDING sin lugar, que no se atribuyen a ninguna provincia y pueden hacer que el total supere la suma provincial. Planillas PENDING se cuentan por month/year del período, no createdAt. Registros se cuentan por date civil GMT-3 del mes: INCOMPLETE, reviewStatus PENDING y existencia de al menos un intervalo ABSENCE respectivamente. Una ausencia cuenta el registro una vez, aunque tenga varias; condiciones pueden coexistir. NONE/APPROVED/MANUAL_LOADED no suman revisión pendiente. No hay paginación ni exclusión de históricos inactivos.
 
-Provincia: snapshot AttendanceRecord.siteId para registros y workplace.siteId para planillas; no usar provincia del empleado. Lectura agregada coherente en RepeatableRead. La imagen docs/arquitectura/dashboardMetricsFrontendExample.png es guía de contenido, no fuente de valores. El frontend debe conservar período/filtro al abrir el destino. Incorporación al común pendiente de sync mediante propuesta20261017-dashboard-metrics.
+Provincia: snapshot AttendanceRecord.siteId para registros y workplace.siteId para planillas con lugar; contingencia conserva provincia null y suma solo globalmente. No usar provincia del empleado. Lectura agregada coherente en RepeatableRead. La imagen docs/arquitectura/dashboardMetricsFrontendExample.png es guía de contenido, no fuente de valores. El frontend debe conservar período/filtro al abrir el destino. Incorporación al común pendiente de sync mediante propuesta20261017-dashboard-metrics.
 
 ### Registros (`/records`)
 - `GET /records`: listado diario de diseño, aún sin DTO final ni ruta implementada. La matriz F-006 usa `/records/monthly`.
@@ -179,19 +179,21 @@ Provincia: snapshot AttendanceRecord.siteId para registros y workplace.siteId pa
 - No se borra el registro; DELETE solo existe como operación de intervalo dentro del PATCH.
 
 ### Empleados y estructura
+Lecturas `/users` y `/users/{id}` implementan todos los roles para ADMIN/SUPER_ADMIN, incluido el administrador consultante si cumple los filtros. `role` es dato readonly en lista/detalle. `siteId`, `search`, `accountStatus`, orden y paginación se aplican al mismo conjunto; `totalItems` cuenta antes de paginar. No se exponen hash, sesiones ni credenciales. Alta conserva EMPLOYEE; PATCH y account-status sobre otros roles devuelven `404 USER_NOT_FOUND` sin modificar perfil/rol/estado/sesiones. `/profile` sigue siendo solo EMPLOYEE. No hay endpoint de gestión de roles ni cambio de elegibilidad en archivos/registros/métricas.
+
 DTOs, rutas, búsquedas y validaciones aprobados de empleados/clientes/lugares pertenecen a `arquitectura/contratos-api.md` (secciones Empleados y Clientes y lugares). `/users/{id}/account-status` usa `{ accountStatus }`; clients/workplaces usan PUT completo para edición. No hay DELETE de entidades.
 
 ### Archivos — F-007 implementada y aprobada
 
 Uploads multipart proxificados,1–10archivos y20MiB inclusivos por archivo; validar extensión/contenido antes de publicar metadata. Formatos pdf/jpg/jpeg/png/doc/docx/txt. No se genera asistencia ni OCR. ADMIN/SUPER_ADMIN gestionan; EMPLOYEE carga para sí y lee/descarga solo archivos propios. Un id ajeno devuelve404 NOT_FOUND. No exponer fileKey/credenciales ni URL estable de bucket.
 
-Timesheet público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{id,name},client:{id,name},site:{id,name},month,year,sequence,status,fileName,fileExtension,fileSizeBytes,uploadedBy:{id,firstName,lastName},createdAt,updatedAt,version,replacedBy:{id,firstName,lastName}|null}`. sequence mapea sequenceNumber DB. uploadedBy/createdAt originales se conservan; replacedBy registra último reemplazante.
+Timesheet público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{id,name}|null,client:{id,name}|null,site:{id,name}|null,month,year,sequence,status,fileName,fileExtension,fileSizeBytes,uploadedBy:{id,firstName,lastName},createdAt,updatedAt,version,replacedBy:{id,firstName,lastName}|null}`. sequence mapea sequenceNumber DB. uploadedBy/createdAt originales se conservan; replacedBy registra último reemplazante.
 
 Document público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{id,name}|null,type,fileName,fileExtension,fileSizeBytes,uploadedBy:{id,firstName,lastName},createdAt,updatedAt}`.
 
 | Ruta | Entrada y salida |
 |---|---|
-| POST /timesheets | Multipart workplaceId/month/year/files repetidos; admin employeeId UUID requerido, móvil deriva de sesión.201 móvil `{data:{timesheetIds,message}}`; admin `{data:{created:Timesheet[]}}`. InicialPENDING y secuencia consecutiva por empleado/lugar/período |
+| POST /timesheets | Multipart workplaceId UUID o string `"null"` explícito, month/year/files repetidos; admin employeeId UUID requerido, móvil deriva de sesión.201 móvil `{data:{timesheetIds,message}}`; admin `{data:{created:Timesheet[]}}`. InicialPENDING y secuencia consecutiva por empleado/lugar/período |
 | GET /timesheets | Admin paginado page1/pageSize25(máx100); filtros search/employeeId/clientId/workplaceId/siteId/month/year/status. Orden yearDESC,monthDESC,sequenceDESC,idASC |
 | GET /timesheets/{id} | Detalle admin o propietario |
 | PATCH /timesheets/{id}/status | Admin `{status:PENDING|LOADED|ERROR}`, devuelve Timesheet, version+1; serializado con reemplazo |
@@ -207,7 +209,7 @@ Document público: `{id,employee:{id,firstName,lastName,employeeId},workplace:{i
 
 FiltrosAND, búsqueda parcial sin case/acentos por nombre de archivo y nombre/apellido/nombre completo/legajo empleado; uploadedBy busca nombre completo también. month1–12/year2000–9999, fechas uploadedFrom/To civiles reales GMT-3 inclusivas, from<=to; no alias from/to ni sort libre. Queries/campos desconocidos/repetidos o inválidos422 VALIDATION_ERROR. Cero bytes, exceso de archivos o multipart inválido422 VALIDATION_ERROR; tamaño422 FILE_TOO_LARGE; extensión/contenido422 FILE_TYPE_NOT_ALLOWED. Nombre de archivo sin rutas/control characters. TXT UTF8sinNUL; DOC WordOLE estructural acotado; DOCX WordOpenXML válido con ZIP/XMLlimitados, no XLSX/ZIP genérico o macro enabled disfrazado. No antivirus.
 
-Nuevas cargas/reemplazos exigen empleado y lugar/cliente activos; lectura/descarga de históricos y cambio admin de status/metadata siguen disponibles aunque estén inactivos. Lugar con registros O planillas no permite cambiar cliente/provincia bajo lockWorkplace; relaciones iguales/nombre/geometría siguen editables.
+Nuevas cargas/reemplazos exigen empleado activo y, cuando existe lugar, lugar/cliente activos; lectura/descarga de históricos y cambio admin de status/metadata siguen disponibles aunque estén inactivos. Lugar con registros O planillas no permite cambiar cliente/provincia bajo lockWorkplace; relaciones iguales/nombre/geometría siguen editables.
 
 Objetos nuevos en claves únicas antes de commit de metadata; lote visible todo-o-nada. Archivo anterior de reemplazo solo se limpia después de confirmar nuevo. Borrados fallidos/ambiguos tienen journal persistido y reintento; nunca borrar keys actualmente referenciadas. Publicación y worker coordinan locks/lease fresca e intentos para no publicar tras DELETE ambiguo; namespace de destino evita consumir cleanup de otro bucket/endpoint. Ante fallo R2, consistencia física eventual documentada en06; no se promete transacción distribuida perfecta. Descargas solicitan firma nueva al reintentar.
 
@@ -260,7 +262,7 @@ Web exige bootstrap GET csrf y Origin/X-CSRF-Token para login/2FA y mutaciones, 
 
 ## Implementación de empleados y perfil
 
-`src/modules/users/` implementa P-06: ADMIN/SUPER_ADMIN gestionan exclusivamente EMPLOYEE, sin DELETE ni gestión de roles/contraseñas por PATCH; perfil devuelve solo identidad EMPLOYEE autenticada. Listas/detalle usan selecciones explícitas, sin passwordHash, role o contraseña inicial, con SiteReference y fechas civiles YYYY-MM-DD. Búsqueda literal parcial case-insensitive en campos publicados, orden lastName/firstName/id y snapshot consistente de listado/total. `GET /users?siteId=<UUID>` implementado: provincia del empleado (`User.siteId`), combinable con `search` y `accountStatus`, aplicado antes de contar/paginar. UUID inválido/repetido/vacío o provincia inexistente devuelve `400 INVALID_SITE`; omitir el parámetro conserva listado global. San Juan es default exclusivo de la UI Admin, sin default provincial en backend.
+`src/modules/users/` implementa lectura de EMPLOYEE, TO_BE_ADMIN, ADMIN y SUPER_ADMIN para ADMIN/SUPER_ADMIN; alta y mutaciones se limitan a EMPLOYEE, sin DELETE ni gestión de roles/contraseñas por PATCH. El perfil devuelve solo la identidad EMPLOYEE autenticada. Listas/detalle incluyen role readonly y usan selecciones explícitas sin passwordHash ni contraseña inicial, con SiteReference y fechas civiles YYYY-MM-DD. Búsqueda literal parcial case-insensitive en campos publicados, orden lastName/firstName/id y snapshot consistente de listado/total. `GET /users?siteId=<UUID>` implementado: provincia de la cuenta (`User.siteId`), combinable con `search` y `accountStatus`, aplicado antes de contar/paginar. UUID inválido/repetido/vacío o provincia inexistente devuelve `400 INVALID_SITE`; omitir el parámetro conserva listado global. San Juan es default exclusivo de la UI Admin, sin default provincial en backend.
 
 Alta ACTIVE, contraseña Argon2 y emailVerifiedAt al crear. Política únicamente local (04); no hay mensajes ni llamadas de red al crear empleado. PATCH conserva omitidos y admite null solo en cuil/hireDate/position. Valida fechas civiles reales/no futuras en GMT-3, incluyendo bisiestos y rechazo de año0000. Un índice SQL lower(trim(email)) garantiza unicidad global frente a legado; migración falla ante colisiones históricas sin fusionar/borrar identidades. DNI y legajo conservan constraints globales y errores específicos incluso concurrentes.
 
@@ -298,4 +300,16 @@ OTP6/10min/5intentos/cooldown60s y payload72h absoluto. Replay correcto de chall
 
 Pendiente vencida: NUEVAOTP/contraseña vigente renueva7d conservandoid y cambiando token/generación; challenge antiguo nunca renueva. Rechazada/cancelada: NUEVAOTP y cuentaACTIVE/rol elegible crean otra solicitud, conservando anterior. Una solaPENDING no cancelada por usuario bajo lock/índiceparcial, incluida vencida renovable. Si otra transición invalidó la generación de credenciales, rechazar la prueba obsoleta; no rehabilitarla al deduplicar.
 
-Al pasar a TO_BE_ADMIN/aprobar/rechazar se revocan sesiones y challenges previos. INACTIVE cancelaPENDING transaccionalmente mediante triggerDB; reactivar no revive enlaces. Users sigue gestionando exclusivamente EMPLOYEE, sin endpoint nuevo de roles. Notificaciones y auditoría operativa en04/06; no atribuir identidad del aprobador a una sesión inexistente.
+Al pasar a TO_BE_ADMIN/aprobar/rechazar se revocan sesiones y challenges previos. INACTIVE cancelaPENDING transaccionalmente mediante triggerDB; reactivar no revive enlaces. Users conserva alta y mutaciones exclusivamente EMPLOYEE y consulta de los cuatro roles con role readonly, sin endpoint nuevo de gestión de roles. Notificaciones y auditoría operativa en04/06; no atribuir identidad del aprobador a una sesión inexistente.
+
+## Feedback de integración implementado (F-015, revisión independiente aprobada)
+
+Registro Mobile y reset conservan `400 WEAK_PASSWORD`, envelope `{error:{code,message,retryable:false}}`, y los dos mensajes exactos del [contrato común](arquitectura/contratos-api.md#feedback-de-política-de-contraseña). Datos ajenos a política inválidos conservan `422 VALIDATION_ERROR`. Los secretos no se recortan ni normalizan para almacenar/comprobar; rango cuenta puntos Unicode.
+
+Tras OTP válido, conflicto administrativo devuelve `409 ADMIN_REQUEST_IDENTITY_CONFLICT` con mensaje que indica revisar email, DNI y legajo o contactar administración, sin datos de otra cuenta. El cliente puede iniciar solicitud corregida con challenge nuevo; reenvío OTP no modifica el payload original ni resuelve el conflicto. Inicial sigue neutro, contraseña existente legada válida y perfil/hash conservados. No se alteró el rechazo post OTP de política para solicitante nuevo.
+
+## Contingencia sin lugar — F-013/B-04 (revisión independiente aprobada)
+
+`POST /timesheets` acepta el campo multipart `workplaceId` con valor literal `"null"` para contingencia. Omitirlo, enviarlo vacío, repetirlo o usar un UUID inválido conserva422 VALIDATION_ERROR; UUID válido inexistente conserva404 WORKPLACE_NOT_FOUND. Ordinaria usa UUID válido activo. No agregar flag ni sustituir null por lugar ficticio. Mobile deriva empleado de sesión; Admin exige employeeId. Lote atómico de1–10archivos,20MiB/archivo y formatos/permisos vigentes.
+
+DTO created/list/detalle/estado/reemplazo devuelve workplace/client/site null. Secuencia independiente por empleado/null/mes/año, protegida por lock e índice SQL, sin reiniciar grupos ordinarios. Lista global conserva employeeId,month,year,status,search y paginación; cualquier filtro siteId/clientId/workplaceId excluye contingencia sin atribuir User.siteId. Reemplazo conserva identidad/período/contexto/secuencia/uploader/createdAt, usa CAS y auditoría, vuelve PENDING y preserva original ante503. Descarga privada firmada sigue disponible al propietario y Admin; no hay DELETE de planillas. Dashboard cuenta PENDING de contingencia en global, nunca en byProvince. Detalle de persistencia y verificación en02/test README.

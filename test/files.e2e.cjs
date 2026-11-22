@@ -1313,3 +1313,259 @@ test('Word XML parts accept valid UTF-16 encoding without relaxing TXT UTF-8 rul
   assert.equal(text.status, 422);
   assert.equal(text.body.error.code, 'FILE_TYPE_NOT_ALLOWED');
 });
+
+test('contingency uses explicit multipart null, triple-null DTO and a separate concurrent sequence context', async () => {
+  const who = await person();
+  const p = await place();
+  const files = [
+    { name: 'contingencia-a.txt', body: txt },
+    { name: 'contingencia-b.txt', body: txt },
+  ];
+  const results = await Promise.all(
+    Array.from({ length: 3 }, () =>
+      uploadTimesheets(who, p, files, { workplaceId: null, month: 4, year: 2051 }),
+    ),
+  );
+  for (const r of results) assert.equal(r.status, 201, JSON.stringify(r.body));
+  const rows = results.flatMap((r) => r.body.data.created);
+  assert.deepEqual(
+    rows.map((r) => r.sequence).sort((a, b) => a - b),
+    [1, 2, 3, 4, 5, 6],
+  );
+  for (const row of rows) {
+    assert.equal(row.workplace, null);
+    assert.equal(row.client, null);
+    assert.equal(row.site, null);
+    const saved = await db.timesheet.findUniqueOrThrow({ where: { id: row.id } });
+    assert.equal(saved.workplaceId, null);
+    assert.deepEqual(objects.get(saved.fileKey).body, txt);
+    assert.deepEqual((await fileRequest('/timesheets/' + row.id)).body.data, row);
+  }
+  for (const overrides of [
+    {},
+    { workplaceId: null, month: 5 },
+    { workplaceId: null, year: 2052 },
+  ]) {
+    const r = await uploadTimesheets(who, p, undefined, { month: 4, year: 2051, ...overrides });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.data.created[0].sequence, 1);
+  }
+  const another = await uploadTimesheets(await person(), p, undefined, {
+    workplaceId: null,
+    month: 4,
+    year: 2051,
+  });
+  assert.equal(another.status, 201);
+  assert.equal(another.body.data.created[0].sequence, 1);
+  // The SQL index, independently of API locks, rejects concurrent duplicate null sequences.
+  const original = await db.timesheet.findUniqueOrThrow({ where: { id: rows[0].id } });
+  const { id, createdAt, updatedAt, ...data } = original;
+  const copies = await Promise.allSettled(
+    [1, 2].map(() =>
+      db.timesheet.create({ data: { ...data, sequenceNumber: 7, fileKey: randomUUID() } }),
+    ),
+  );
+  assert.deepEqual(copies.map((r) => r.status).sort(), ['fulfilled', 'rejected']);
+  assert.equal(copies.find((r) => r.status === 'rejected').reason.code, 'P2002');
+});
+
+test('contingency requires explicit null, preserves file limits and cannot bypass ordinary validation or employee authorization', async () => {
+  const who = await person();
+  const fields = tsFields(who);
+  delete fields.workplaceId;
+  for (const input of [
+    fields,
+    { ...fields, workplaceId: '' },
+    { ...fields, workplaceId: 'NULL' },
+    { ...fields, workplaceId: 'bad' },
+    { ...fields, workplaceId: randomUUID() },
+  ]) {
+    const r = await fileRequest('/timesheets', { body: form(input) });
+    assert.equal(r.status, input.workplaceId?.length === 36 ? 404 : 422, JSON.stringify(r.body));
+  }
+  const repeated = form({ ...fields, workplaceId: null });
+  repeated.append('workplaceId', workplace.id);
+  assert.equal((await fileRequest('/timesheets', { body: repeated })).status, 422);
+  for (const files of [
+    [],
+    Array.from({ length: 11 }, () => ({ name: 'a.txt', body: txt })),
+    [
+      { name: 'a.txt', body: txt },
+      { name: 'bad.pdf', body: txt },
+    ],
+  ]) {
+    const r = await fileRequest('/timesheets', {
+      body: form({ ...fields, workplaceId: null }, files),
+    });
+    assert.equal(r.status, 422, JSON.stringify(r.body));
+  }
+  assert.equal(await db.timesheet.count({ where: { employeeId: who.id } }), 0);
+  const ten = await fileRequest('/timesheets', {
+    body: form({...fields,workplaceId:null},Array.from({length:10},(_,i)=>({name:`lote-${i}.txt`,body:txt}))),
+  });
+  assert.equal(ten.status,201,JSON.stringify(ten.body));
+  assert.deepEqual(ten.body.data.created.map(row=>row.sequence),[1,2,3,4,5,6,7,8,9,10]);
+  const mobile = await fileRequest('/timesheets', {
+    user: who,
+    body: form({ workplaceId: null, month: 4, year: 2053 }),
+  });
+  assert.equal(mobile.status, 201, JSON.stringify(mobile.body));
+  keys(mobile.body.data, ['timesheetIds', 'message']);
+  const id = mobile.body.data.timesheetIds[0];
+  assert.equal((await fileRequest('/timesheets/' + id, { user: who })).body.data.workplace, null);
+  for (const path of ['/timesheets/' + id, '/timesheets/' + id + '/file'])
+    assert.equal((await fileRequest(path, { user: other })).status, 404);
+  assert.equal(
+    (await fileRequest('/timesheets', { user: who, body: form({ ...fields, workplaceId: null }) }))
+      .status,
+    422,
+  );
+  const inactive = await person();
+  await db.user.update({ where: { id: inactive.id }, data: { accountStatus: 'INACTIVE' } });
+  assert.equal(
+    (await uploadTimesheets(inactive, workplace, undefined, { workplaceId: null })).status,
+    403,
+  );
+  assert.equal(
+    (await uploadTimesheets(admin, workplace, undefined, { workplaceId: null })).status,
+    404,
+  );
+});
+
+test('global contingency list includes employee-period-status-search pagination and territorial filters exclude it', async () => {
+  const who = await person();
+  const p = await place();
+  const marker = 'Contingencia ' + randomUUID();
+  const f = [{ name: marker + '.txt', body: txt }];
+  const ordinary = await uploadTimesheets(who, p, f, { month: 8, year: 2054 });
+  const contingency = await uploadTimesheets(who, p, f, {
+    workplaceId: null,
+    month: 8,
+    year: 2054,
+  });
+  assert.equal(ordinary.status, 201);
+  assert.equal(contingency.status, 201, JSON.stringify(contingency.body));
+  const id = contingency.body.data.created[0].id;
+  const root = `/timesheets?employeeId=${who.id}&month=8&year=2054&status=PENDING&search=${encodeURIComponent(marker)}`;
+  const first = await fileRequest(root + '&pageSize=1');
+  const second = await fileRequest(root + '&pageSize=1&page=2');
+  assert.deepEqual(first.body.pagination, { page: 1, pageSize: 1, totalItems: 2, totalPages: 2 });
+  assert.deepEqual(
+    new Set([...first.body.data, ...second.body.data].map((r) => r.id)),
+    new Set([ordinary.body.data.created[0].id, id]),
+  );
+  for (const [key, value] of [
+    ['siteId', p.siteId],
+    ['siteId', who.siteId],
+    ['clientId', p.clientId],
+    ['workplaceId', p.id],
+  ]) {
+    const r = await fileRequest(root + `&${key}=${value}`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(
+      r.body.data.map((r) => r.id),
+      [ordinary.body.data.created[0].id],
+    );
+  }
+  for (const q of ['month=9', 'year=2055', 'status=ERROR'])
+    assert.equal(
+      (await fileRequest(`/timesheets?employeeId=${who.id}&${q}`)).body.pagination.totalItems,
+      0,
+    );
+});
+
+test('contingency replacement preserves identity and original audit, enforces CAS and survives storage failure and restart', async () => {
+  const who = await person();
+  const made = await uploadTimesheets(who, workplace, undefined, {
+    workplaceId: null,
+    month: 7,
+    year: 2055,
+  });
+  assert.equal(made.status, 201, JSON.stringify(made.body));
+  const original = made.body.data.created[0];
+  const status = await request(`/api/v1/timesheets/${original.id}/status`, {
+    user: admin,
+    method: 'PATCH',
+    body: { status: 'LOADED' },
+  });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.data.version, 2);
+  assert.equal(
+    (
+      await fileRequest(`/timesheets/${original.id}/file`, {
+        user: who,
+        method: 'PUT',
+        body: form({ expectedVersion: 2 }, undefined, 'file'),
+      })
+    ).status,
+    403,
+  );
+  const replacements = await Promise.all(
+    ['nuevo.txt', 'otro.txt'].map((name) =>
+      fileRequest(`/timesheets/${original.id}/file`, {
+        method: 'PUT',
+        body: form({ expectedVersion: 2 }, [{ name, body: Buffer.from(name) }], 'file'),
+      }),
+    ),
+  );
+  assert.deepEqual(replacements.map((r) => r.status).sort(), [200, 409]);
+  const winner = replacements.find((r) => r.status === 200).body.data;
+  for (const key of [
+    'id',
+    'employee',
+    'workplace',
+    'client',
+    'site',
+    'month',
+    'year',
+    'sequence',
+    'uploadedBy',
+    'createdAt',
+  ])
+    assert.deepEqual(winner[key], original[key]);
+  assert.equal(winner.status, 'PENDING');
+  assert.equal(winner.version, 3);
+  assert.equal(winner.replacedBy.id, admin.id);
+  const before = await db.timesheet.findUniqueOrThrow({ where: { id: original.id } });
+  failPut = ['before'];
+  const failed = await fileRequest(`/timesheets/${original.id}/file`, {
+    method: 'PUT',
+    body: form({ expectedVersion: 3 }, undefined, 'file'),
+  });
+  assert.equal(failed.status, 503, JSON.stringify(failed.body));
+  assert.equal(failed.body.error.code, 'STORAGE_UNAVAILABLE');
+  assert.deepEqual(await db.timesheet.findUniqueOrThrow({ where: { id: original.id } }), before);
+  await stopApi();
+  await startApi();
+  assert.deepEqual((await fileRequest('/timesheets/' + original.id)).body.data, winner);
+  const signed = await fileRequest(`/timesheets/${original.id}/file`, { user: who });
+  assert.equal(signed.status, 200);
+  assert.equal(signed.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(
+    Buffer.from(await (await fetch(signed.body.data.downloadUrl)).arrayBuffer()),
+    Buffer.from(winner.fileName),
+  );
+});
+
+test('contingency migration preserves ordinary historical rows while allowing null without dropping existing uniqueness', async () => {
+  const sql = readFileSync(
+    'prisma/migrations/20261121000000_timesheet_contingency/migration.sql',
+    'utf8',
+  );
+  const employeeId = randomUUID(),
+    workplaceId = randomUUID(),
+    id = randomUUID();
+  await db.$transaction(async (tx) => {
+    // Shadow only inside this transaction: emulate the previous required column with a historical row.
+    await tx.$executeRawUnsafe(
+      'CREATE TEMP TABLE "Timesheet" (id uuid PRIMARY KEY, "employeeId" uuid NOT NULL, "workplaceId" uuid NOT NULL, month int NOT NULL, year int NOT NULL, "sequenceNumber" int NOT NULL, UNIQUE ("employeeId","workplaceId",month,year,"sequenceNumber")) ON COMMIT DROP',
+    );
+    await tx.$executeRaw`INSERT INTO "Timesheet" VALUES (${id}::uuid,${employeeId}::uuid,${workplaceId}::uuid,4,2051,1)`;
+    const before = await tx.$queryRaw`SELECT * FROM "Timesheet"`;
+    for (const statement of sql.split(';').filter((s) => s.trim()))
+      await tx.$executeRawUnsafe(statement);
+    assert.deepEqual(await tx.$queryRaw`SELECT * FROM "Timesheet"`, before);
+    await tx.$executeRaw`INSERT INTO "Timesheet" VALUES (${randomUUID()}::uuid,${employeeId}::uuid,NULL,4,2051,1)`;
+    assert.equal((await tx.$queryRaw`SELECT count(*)::int AS count FROM "Timesheet"`)[0].count, 2);
+  });
+});

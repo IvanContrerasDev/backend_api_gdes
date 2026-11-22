@@ -25,9 +25,9 @@ export function timesheetDto(
   return {
     id: row.id,
     employee: row.employee,
-    workplace: { id: row.workplace.id, name: row.workplace.name },
-    client: row.workplace.client,
-    site: row.workplace.site,
+    workplace: row.workplace ? { id: row.workplace.id, name: row.workplace.name } : null,
+    client: row.workplace?.client ?? null,
+    site: row.workplace?.site ?? null,
     month: row.month,
     year: row.year,
     sequence: row.sequenceNumber,

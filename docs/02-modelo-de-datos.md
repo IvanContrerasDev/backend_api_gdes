@@ -154,10 +154,10 @@ Prohibido eliminar registros (§26).
 |---|---|---|---|
 | id | uuid | PK | |
 | employeeId | uuid | FK → User | |
-| workplaceId | uuid | FK → Workplace, required | Spec §39.3 |
+| workplaceId | uuid? | FK → Workplace, nullable | Ordinaria con lugar; contingencia conserva null sin atribución provincial |
 | month | int | 1–12 | |
 | year | int | required | |
-| sequenceNumber | int | required | Secuencial por (employeeId, workplaceId, month, year); sin unicidad en la combinación (§39.1) |
+| sequenceNumber | int | required | Secuencial por (employeeId, workplaceId, month, year), con unicidad incluyendo sequenceNumber; null es un grupo propio |
 | status | TimesheetStatus | default PENDING | `PENDING` / `LOADED` / `ERROR` (§39.2) |
 | fileKey | string | required | Clave en el bucket (R2) |
 | fileName | string | required | |
@@ -239,10 +239,14 @@ Tabla técnica: id UUID/token opaco, ownerId FK User, context canónico, payload
 
 ### Persistencia de planillas y métricas implementada
 
-Timesheet fue incorporado por F-009 (migración20261017000000_timesheets) para contar fuentes reales. Campos de diseño anteriores más fileExtension/fileSizeBytes, version1 y replacedById nullable; uploadedById identifica uploader original. Unicidad(employeeId,workplaceId,month,year,sequenceNumber), checks de mes1–12/año2000–9999/tamaño y secuencia positivos; índices período/status y lugar. Las rutas de archivos aún son F-007. Dashboard lee snapshot AttendanceRecord.siteId y provincia del lugar de Timesheet, con agregados en RepeatableRead.
+Timesheet fue incorporado por F-009 (migración20261017000000_timesheets) para contar fuentes reales. Campos de diseño anteriores más fileExtension/fileSizeBytes, version1 y replacedById nullable; uploadedById identifica uploader original. Unicidad(employeeId,workplaceId,month,year,sequenceNumber), checks de mes1–12/año2000–9999/tamaño y secuencia positivos; índices período/status y lugar. Rutas de archivos F-007 implementadas. Dashboard lee snapshot AttendanceRecord.siteId y provincia del lugar de Timesheet, con agregados en RepeatableRead; contingencia sin lugar suma solo al total global.
 
 ### Archivos implementados y aprobados
 
 Migraciones20261017010000_files y20261017011000_storage_cleanup_namespace: Timesheet agrega contentType y fileKey único; Document implementa campos de diseño con fileExtension/fileSizeBytes/contentType y relaciones employee/uploader/workplace(nullable), fileKey único e índices de consulta. StorageCleanupJob técnico conserva key única, namespace hash(endpoint+bucket), attempts,nextAttemptAt,createdAt/updatedAt; índice namespace/nextAttemptAt. Journal previo a PUT y cancelación atómica al publicar metadata; worker por destino, referencia actual y lease fresca tras lock impiden borrar objetos vigentes o publicar claves purgadas. Ver06 para recuperación/operación. Se congela cliente/provincia del lugar con registros o planillas.
 
 Persistencia administrativa: AdminAccessChallenge con hashOTP/payloadtemporal/retención/requestId del consumo; AdminAccessRequest con estado/cancelledAt/decidedAt/emailHash/decisionGeneration/jti/tokenHash/issuedAt/expiresAt y relación1:N con User. ÍndiceSQLparcial userIdPENDING/cancelledAtnull; triggerSQL de INACTIVE cancela las pendientes. AdminAccessNotification con request/recipient/generation/kind RECEIPT|DECISION|RESULT/namespace/payloadmetadatos/attempts/lease/acceptedAt/completedAt/expiry, único por request+generation+kind+recipient. Los modelos y tablas reales sustituyen los nombres del diseño inicial; no se almacena bearer ni identidad ficticia de aprobador.
+
+## Planillas de contingencia (F-013/B-04, revisión independiente aprobada)
+
+Migración20261121000000_timesheet_contingency elimina únicamente NOT NULL de Timesheet.workplaceId y añade índice único parcial (employeeId,month,year,sequenceNumber) WHERE workplaceId IS NULL. Conserva filas, FK, índice de secuencia ordinaria y todos los checks previos. NULL es el contexto propio de secuencia por empleado/período; reemplazo conserva contexto y número. No hay cliente/provincia inferidos ni relación ficticia. Lock User existente serializa publicaciones concurrentes; el índice protege también escrituras directas concurrentes. Las lecturas con filtro territorial excluyen null; global incluye estas filas.

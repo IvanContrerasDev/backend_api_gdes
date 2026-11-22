@@ -44,8 +44,8 @@ export function uploadInput(value: unknown, auth: AuthenticatedUser, timesheet: 
   ]);
   const employeeId = admin ? uuid(body.employeeId) : auth.id;
   const workplaceId =
-    !timesheet &&
-    (body.workplaceId === undefined || body.workplaceId === '' || body.workplaceId === 'null')
+    body.workplaceId === 'null' ||
+    (!timesheet && (body.workplaceId === undefined || body.workplaceId === ''))
       ? null
       : uuid(body.workplaceId);
   return {

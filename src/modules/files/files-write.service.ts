@@ -101,7 +101,7 @@ export class FilesWriteService {
           if (timesheet) {
             const identity = {
               employeeId: input.employeeId,
-              workplaceId: input.workplaceId!,
+              workplaceId: input.workplaceId,
               month: input.month!,
               year: input.year!,
             };

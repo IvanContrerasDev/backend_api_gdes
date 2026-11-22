@@ -16,6 +16,7 @@ const listSelect = {
   phone: true,
   site: { select: { id: true, name: true } },
   accountStatus: true,
+  role: true,
 } as const;
 const profileSelect = {
   id: true,
@@ -60,7 +61,7 @@ export class UsersService {
   ) {}
   async detail(id: string) {
     const row = await this.db.user.findFirst({
-      where: { id, role: UserRole.EMPLOYEE },
+      where: { id },
       select: detailSelect,
     });
     if (!row) missing();
@@ -104,7 +105,11 @@ export class UsersService {
     }
   }
   async update(id: string, input: UserInput) {
-    await this.detail(id);
+    const employee = await this.db.user.findFirst({
+      where: { id, role: UserRole.EMPLOYEE },
+      select: { id: true },
+    });
+    if (!employee) missing();
     await this.site(input.siteId);
     try {
       return dates(
@@ -158,7 +163,6 @@ export class UsersService {
   async list(query: ReturnType<typeof userQuery>) {
     await this.site(query.siteId);
     const where: Prisma.UserWhereInput = {
-      role: UserRole.EMPLOYEE,
       accountStatus: query.accountStatus,
       siteId: query.siteId,
     };

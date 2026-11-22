@@ -1,9 +1,3 @@
 # Estado actual — reviewer
 
-## F-011/B-02 — review de fixes aprobada; runtime pendiente
-
-Veredicto: aprobados los dos ítems previos (0 pendientes en esta review); task F-011 sigue abierto por criterios runtime y suites auth/admin con DB pendientes.
-
-Evidencia independiente fresca: `npm run build` PASS; `node test/notification-providers.e2e.cjs` 13/13 PASS; `npm run lint` PASS. El build fue ejecutado antes del test. No se usó DB ni servicios externos. Las suites auth/admin HTTP/PostgreSQL no se ejecutaron por falta de `TEST_DATABASE_URL`.
-
-Pendiente operativo fuera de esta revisión: smoke Docker real Mailpit/API y configuración runtime `API_PUBLIC_URL` al origen LAN vigente. El orchestrator debe realizarlo recreando solo `gdes-api` y preservando PostgreSQL. No se afirma integración verificada desde Android/Admin.
+Sin revisión activa. F-013/B-04 aprobada C1–C7, cero observaciones; cierre consolidado por leader en docs02/03/06 y test/README. Verificación propia Prisma generate/validate, build/lint/diff-check PASS. Imagen gdes-f013-review-build:local 4b1935999e50; smoke real API/PostgreSQL16/SeaweedFS y suite serial 220/220 PASS (93.5s), sin fallos/omisiones/cancelaciones. Proyecto/DB/volúmenes UUID nuevos con15migraciones y fixtures explícitas; bytes/metadata persisten tras recreación y503 conserva originales, global2/provincial1. Teardown completo verificado. Puerto33444 libre requerido; colisión transitoria inicial descartada con repetición completa en nuevo proyecto, sin detener procesos ajenos ni editar código. Q-01/B-02 y despliegue/aceptación física permanecen pendientes. Sin producto/Git/SYNCED/otras apps, recursos manuales/env secretos ni mails externos.

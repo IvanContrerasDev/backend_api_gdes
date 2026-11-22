@@ -14,12 +14,9 @@ export function bodyFields(value: unknown, keys: string[]): Record<string, unkno
   return body;
 }
 export function strongPassword(value: unknown, policy: PasswordPolicyService): string {
-  try {
-    policy.validate(value);
-  } catch {
-    validation();
-  }
-  return value as string;
+  if (typeof value !== 'string') validation();
+  policy.validate(value);
+  return value;
 }
 export function registrationInput(value: unknown, policy: PasswordPolicyService) {
   const body = bodyFields(value, [

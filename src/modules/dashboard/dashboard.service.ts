@@ -10,7 +10,7 @@ interface RecordCounts {
   recordsWithAbsence: bigint;
 }
 interface TimesheetCounts {
-  siteId: string;
+  siteId: string | null;
   pendingTimesheets: bigint;
 }
 
@@ -36,7 +36,7 @@ export class DashboardService {
           GROUP BY r."siteId"`;
         const timesheets = await tx.$queryRaw<TimesheetCounts[]>`
           SELECT w."siteId", COUNT(*) AS "pendingTimesheets"
-          FROM "Timesheet" t JOIN "Workplace" w ON w.id = t."workplaceId"
+          FROM "Timesheet" t LEFT JOIN "Workplace" w ON w.id = t."workplaceId"
           WHERE t.year = ${year} AND t.month = ${month} AND t.status = 'PENDING'
           GROUP BY w."siteId"`;
         const recordsBySite = new Map(records.map((row) => [row.siteId, row]));
@@ -65,7 +65,16 @@ export class DashboardService {
             recordsWithAbsence: 0,
           },
         );
-        return { ...totals, byProvince };
+        return {
+          ...totals,
+          // The null-place group belongs only to the global total, never to an
+          // employee province or a synthetic territory.
+          pendingTimesheets: timesheets.reduce(
+            (sum, row) => sum + Number(row.pendingTimesheets),
+            0,
+          ),
+          byProvince,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );

@@ -33,9 +33,23 @@ async function port() {
 async function main() {
   const [apiPort, storagePort, databasePort] = await Promise.all([port(), port(), port()]);
   const config = JSON.parse(
-    docker(['compose', '-f', resolve('docker-compose.yml'), 'config', '--format', 'json']),
+    docker([
+      'compose',
+      '--env-file',
+      '/dev/null',
+      '-f',
+      resolve('docker-compose.yml'),
+      'config',
+      '--format',
+      'json',
+    ]),
   );
   delete config.name;
+  // Storage smoke uses log providers: do not start Mailpit or inherit its host
+  // port/configuration from an operator's development environment.
+  delete config.services.mailpit;
+  delete config.services.api.depends_on.mailpit;
+  delete config.volumes.mailpit_data;
   for (const service of Object.values(config.services)) delete service.container_name;
   config.services.postgres.ports = [`127.0.0.1:${databasePort}:5432`];
   config.services.postgres.environment.POSTGRES_DB = 'gdes_f003_test';
@@ -162,11 +176,11 @@ async function main() {
     },
   });
   const bytes = Buffer.from('Archivo de integración S3 real.\n');
-  function form(replace = false) {
+  function form(replace = false, contingency = false) {
     const f = new FormData();
     if (!replace) {
       f.set('employeeId', employee.id);
-      f.set('workplaceId', workplace.id);
+      f.set('workplaceId', contingency ? 'null' : workplace.id);
       f.set('month', '11');
       f.set('year', '2026');
     } else f.set('expectedVersion', '1');
@@ -181,8 +195,31 @@ async function main() {
   const uploaded = await upload.json();
   assert.equal(upload.status, 201, JSON.stringify(uploaded));
   const row = uploaded.data.created[0];
-  async function download() {
-    const r = await fetch(base + '/api/v1/timesheets/' + row.id + '/file', { headers });
+  const contingencyUpload = await fetch(base + '/api/v1/timesheets', {
+    method: 'POST',
+    headers,
+    body: form(false, true),
+  });
+  const contingencyBody = await contingencyUpload.json();
+  assert.equal(contingencyUpload.status, 201, JSON.stringify(contingencyBody));
+  const contingency = contingencyBody.data.created[0];
+  for (const key of ['workplace', 'client', 'site']) assert.equal(contingency[key], null);
+  assert.equal(contingency.sequence, 1);
+  assert.equal(row.sequence, 1);
+  const targets = [row, contingency];
+  const metrics = (
+    await (await fetch(base + '/api/v1/dashboard/metrics?month=11&year=2026', { headers })).json()
+  ).data;
+  assert.equal(metrics.pendingTimesheets, 2);
+  assert.equal(
+    metrics.byProvince.reduce((sum, p) => sum + p.pendingTimesheets, 0),
+    1,
+  );
+  async function download(target = row) {
+    const detail = await fetch(base + '/api/v1/timesheets/' + target.id, { headers });
+    assert.equal(detail.status, 200);
+    assert.deepEqual((await detail.json()).data, target);
+    const r = await fetch(base + '/api/v1/timesheets/' + target.id + '/file', { headers });
     assert.equal(r.status, 200);
     const data = (await r.json()).data;
     const url = new URL(data.downloadUrl);
@@ -196,6 +233,7 @@ async function main() {
     return url;
   }
   const url = await download();
+  await download(contingency);
   const client = new S3Client({
     endpoint: url.origin,
     forcePathStyle: true,
@@ -218,39 +256,67 @@ async function main() {
   } finally {
     client.destroy();
   }
-  const metadata = await db.timesheet.findUniqueOrThrow({ where: { id: row.id } });
+  const metadata = await Promise.all(
+    targets.map((target) => db.timesheet.findUniqueOrThrow({ where: { id: target.id } })),
+  );
   console.log(
     compose('up', '-d', '--force-recreate', '--wait', '--wait-timeout', '180', 'storage', 'api'),
   );
-  await download();
-  assert.deepEqual(await db.timesheet.findUniqueOrThrow({ where: { id: row.id } }), metadata);
+  for (const [index, target] of targets.entries()) {
+    await download(target);
+    assert.deepEqual(
+      await db.timesheet.findUniqueOrThrow({ where: { id: target.id } }),
+      metadata[index],
+    );
+  }
   assert.equal(
     (await db.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash,
     'must-survive-restart',
   );
   console.log(compose('stop', 'storage'));
-  const replacement = await fetch(base + '/api/v1/timesheets/' + row.id + '/file', {
-    method: 'PUT',
-    headers,
-    body: form(true),
-  });
-  const error = await replacement.json();
-  assert.equal(replacement.status, 503, JSON.stringify(error));
-  assert.equal(error.error.code, 'STORAGE_UNAVAILABLE');
-  assert.deepEqual(await db.timesheet.findUniqueOrThrow({ where: { id: row.id } }), metadata);
+  for (const [index, target] of targets.entries()) {
+    const replacement = await fetch(base + '/api/v1/timesheets/' + target.id + '/file', {
+      method: 'PUT',
+      headers,
+      body: form(true),
+    });
+    const error = await replacement.json();
+    assert.equal(replacement.status, 503, JSON.stringify(error));
+    assert.equal(error.error.code, 'STORAGE_UNAVAILABLE');
+    assert.equal(error.error.retryable, true);
+    assert.deepEqual(
+      await db.timesheet.findUniqueOrThrow({ where: { id: target.id } }),
+      metadata[index],
+    );
+  }
   console.log(compose('up', '-d', 'storage'));
   console.log(compose('exec', '-T', 'api', 'node', 'scripts/storage-ready.cjs'));
-  await download();
+  for (const target of targets) await download(target);
   console.log(
-    'PASS: health/catalog/guard/CORS/cookies/CSRF, real SDK upload+signed bytes, anonymous+expired403, recreation persistence, failed replacement503 preserves original. HTTP only; browser/Android pending.',
+    'PASS: health/catalog/guard/CORS/cookies/CSRF, real SDK upload+signed bytes, anonymous+expired403, ordinary+contingency null/global metrics, recreation persistence, failed replacement503 preserves both originals. HTTP only; browser/Android pending.',
   );
   if (process.env.RUNTIME_RUN_REGRESSIONS === 'true') {
     console.log(compose('stop', 'api'));
-    console.log('Running full regression suite against this exclusive database');
+    console.log(
+      compose(
+        'run',
+        '--rm',
+        '--no-deps',
+        'api',
+        'env',
+        'NODE_ENV=test',
+        'LOCAL_SEED_PASSWORD=f013-test-fixture',
+        'npm',
+        'run',
+        'prisma:seed',
+      ),
+    );
+    console.log('Running full serial regression suite against this exclusive database');
     execFileSync(
       process.execPath,
       [
         '--test',
+        '--test-concurrency=1',
         ...require('node:fs')
           .readdirSync('test')
           .filter((n) => n.endsWith('.e2e.cjs'))

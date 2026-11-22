@@ -206,12 +206,12 @@
       "apps": [
         "backend"
       ],
-      "estado": "pending",
+      "estado": "done",
       "taskSpec": null,
       "criterios": [
         "B-04: carga de contingencia con workplaceId null según acuerdo, ordinaria con lugar obligatorio, sin lugar ficticio",
         "Migración no destructiva, DTOs y lecturas/descargas/permisos soportan relaciones nulas, secuencia null por contexto propio",
-        "Métricas respetan atribución ratificada sin inferir provincia del empleado; elevar solamente decisiones aún abiertas",
+        "Contingencia suma al total general, sin provincia, excluida de filtros/desgloses provinciales, sin inferir provincia del empleado",
         "Regresiones de archivos/histórico/métricas y revisión independiente aprobadas"
       ],
       "documentation": "docs/06-integraciones.md"
@@ -232,6 +232,24 @@
         "Tests, build/lint y reviewer independiente aprobados"
       ],
       "documentation": "docs/04-auth-y-seguridad.md"
+    },
+    {
+      "id": "F-015",
+      "titulo": "Incidencias integración: lecturas todos los roles y feedback de política/identidad",
+      "apps": [
+        "backend",
+        "admin",
+        "mobile"
+      ],
+      "estado": "done",
+      "taskSpec": null,
+      "criterios": [
+        "Lecturas todos los roles con role readonly; mutaciones solo EMPLOYEE y filtros F-014 preservados",
+        "WEAK_PASSWORD específico y conflicto post OTP recuperable conforme contrato común",
+        "Matriz aislada de identidad, tests reales, build/lint y reviewer independiente",
+        "Evidencia consumidor sin certificar Q-01 ni cerrar B-02/B-04"
+      ],
+      "documentation": "docs/06-integraciones.md"
     }
   ]
 }

@@ -62,7 +62,7 @@ async function until(check) {
   assert.fail('Expected durable notification or PostgreSQL lock condition');
 }
 function codeFor(email) {
-  const message = emails.findLast((item) => item.to.toLowerCase() === email.toLowerCase() && /(?<!\d)\d{6}(?!\d)/.test(item.html));
+  const message = emails.findLast((item) => item.to.toLowerCase() === email.trim().toLowerCase() && /(?<!\d)\d{6}(?!\d)/.test(item.html));
   assert.ok(message, 'fake EmailProvider captures an OTP');
   return /(?<!\d)\d{6}(?!\d)/.exec(message.html)[0];
 }
@@ -141,7 +141,7 @@ after(async () => {
   // Align table-specific C cleanup after schema is designed; no reset/global delete.
   if (db.adminAccessNotification) await db.adminAccessNotification.deleteMany({ where: { request: { userId: { in: owned } } } });
   if (db.adminAccessRequest) await db.adminAccessRequest.deleteMany({ where: { userId: { in: owned } } });
-  if (db.adminAccessChallenge) await db.adminAccessChallenge.deleteMany({ where: { identityHash: { in: profiles.map((value) => createHmac('sha256', process.env.JWT_REFRESH_SECRET).update('admin-request:'+value.email.toLowerCase()).digest('hex')) } } });
+  if (db.adminAccessChallenge) await db.adminAccessChallenge.deleteMany({ where: { identityHash: { in: profiles.map((value) => createHmac('sha256', process.env.JWT_REFRESH_SECRET).update('admin-request:'+value.email.trim().toLowerCase()).digest('hex')) } } });
   await db.user.deleteMany({ where: { id: { in: owned } } }); await db.$disconnect();
   if (releaseAuthTestLock) await releaseAuthTestLock();
 });
@@ -549,4 +549,68 @@ test('known-user verification budget survives an email edit instead of restartin
   for(let n=0;n<4;n++) {const c=await start(known.input);for(let i=0;i<5;i++)await verify(c,c.code==='000000'?'000001':'000000');}
   const email='edited-'+known.user.email;await db.user.update({where:{id:known.user.id},data:{email}});
   const next=await start({...known.input,email});error(await verify(next),429,'TOO_MANY_ATTEMPTS');
+});
+
+test('identity conflict after OTP is recoverable with a fresh corrected challenge without merging identities', async () => {
+  const one = await fixture(), two = await fixture();
+  for (const input of [
+    { ...one.input, dni: two.user.dni }, { ...one.input, employeeId: two.user.employeeId },
+    { ...one.input, dni: profile().dni }, profile({ dni: two.user.dni }), profile({ employeeId: two.user.employeeId }),
+  ]) {
+    const challenge = await start(input);
+    error(await verify(challenge, challenge.code === '000000' ? '000001' : '000000'), 401, 'INVALID_OTP');
+    const result = await verify(challenge);
+    error(result, 409, 'ADMIN_REQUEST_IDENTITY_CONFLICT');
+    assert.equal(result.body.error.retryable, false);
+    assert.equal(result.body.error.message, 'El email, DNI y legajo no corresponden a una misma cuenta. Revisá esos tres datos o contactá a administración');
+    assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: one.user.id } }), one.user);
+    assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: two.user.id } }), two.user);
+  }
+  const corrected = await start({ ...one.input, email: ` ${one.input.email.toUpperCase()} `,
+    employeeId: ` ${one.input.employeeId} ` });
+  submitted(await verify(corrected));
+  assert.equal(await db.adminAccessRequest.count({ where: { userId: one.user.id } }), 1);
+  assert.equal(await db.adminAccessRequest.count({ where: { userId: two.user.id } }), 0);
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: one.user.id } })).passwordHash, one.user.passwordHash);
+});
+
+test('normalized new identity stays bound to its challenge and verification rejects replacement payloads', async () => {
+  const input = profile();
+  const challenge = await start({ ...input, email: ` ${input.email.toUpperCase()} `,
+    employeeId: ` ${input.employeeId} `, siteId: input.siteId.toUpperCase() });
+  const response = await http('/auth/admin-access-request/verify', { body: {
+    challengeId: challenge.challengeId, code: challenge.code, email: profile().email,
+  } });
+  error(response, 422, 'VALIDATION_ERROR');
+  assert.equal(await db.user.count({ where: { email: input.email } }), 0);
+  submitted(await verify(challenge));
+  const user = await db.user.findUniqueOrThrow({ where: { email: input.email } }); owned.push(user.id);
+  assert.equal(user.employeeId, input.employeeId);
+  assert.equal(user.siteId, input.siteId);
+  assert.equal(user.role, 'TO_BE_ADMIN');
+});
+test('concurrent new identities sharing DNI or employeeId cannot merge or overwrite the winner', async () => {
+  for (const field of ['dni', 'employeeId']) {
+    const one = profile(), two = profile({ [field]: one[field] });
+    const a = await start(one), b = await start(two);
+    const results = await Promise.all([verify(a), verify(b)]);
+    assert.deepEqual(results.map(r => r.status).sort(), [202, 409]);
+    const loser = results.find(r => r.status === 409);
+    error(loser, 409, 'ADMIN_REQUEST_IDENTITY_CONFLICT');
+    const rows = await db.user.findMany({ where: { email: { in: [one.email, two.email] } } });
+    assert.equal(rows.length, 1); owned.push(rows[0].id);
+    assert.equal(rows[0][field], one[field]);
+    assert.equal(await db.adminAccessRequest.count({ where: { userId: rows[0].id } }), 1);
+  }
+});
+test('identity claimed after a fresh challenge cannot inherit password proof or overwrite a new account', async () => {
+  const input = profile(); const challenge = await start(input);
+  const { password: ignored, ...data } = input;
+  const user = await db.user.create({ data: { ...data, birthDate: new Date(data.birthDate),
+    passwordHash: await argon2.hash(password), role: 'EMPLOYEE' } }); owned.push(user.id);
+  error(await verify(challenge), 401, 'INVALID_CREDENTIALS');
+  assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: user.id } }), user);
+  assert.equal(await db.adminAccessRequest.count({ where: { userId: user.id } }), 0);
+  submitted(await verify(await start(input)));
+  assert.equal((await db.user.findUniqueOrThrow({ where: { id: user.id } })).passwordHash, user.passwordHash);
 });

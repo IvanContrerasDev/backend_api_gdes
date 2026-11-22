@@ -13,7 +13,7 @@ docker run --rm -d --name gdes-f003-test \
 # Esperar a que pg_isready confirme disponibilidad.
 docker exec gdes-f003-test pg_isready -U postgres
 DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test npm run prisma:deploy
-DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test npm run prisma:seed
+NODE_ENV=test DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test npm run prisma:seed
 npm run prisma:generate
 TEST_DATABASE_URL=postgresql://postgres:f003-test@localhost:55433/gdes_f003_test npm test
 npm run lint
@@ -21,7 +21,7 @@ npm run lint
 docker stop gdes-f003-test
 ```
 
-`npm test` compila antes de ejecutar todos los archivos `test/*.e2e.cjs`. El contenedor no monta volúmenes, y se elimina al detenerlo. La suite requiere que el seed de seis provincias esté aplicado.
+`npm test` compila antes de ejecutar todos los archivos `test/*.e2e.cjs`. El contenedor no monta volúmenes, y se elimina al detenerlo. La suite completa requiere el seed no productivo explícito: seis provincias y cuatro cuentas fixture locales, incluida seed.employee@gdes.local para la regresión que comprueba que repetir el seed conserva las ediciones.
 
 La migración de estructura usa índices PostgreSQL por expresión para garantizar unicidad normalizada de clientes y lugares incluso con requests concurrentes. Esos índices se conservan en SQL porque Prisma no expresa índices por función. La búsqueda usa `unaccent` sin quitar acentos del nombre almacenado; la unicidad normaliza mayúsculas y espacios.
 
@@ -72,7 +72,7 @@ node test/runtime-local.smoke.cjs
 RUNTIME_RUN_REGRESSIONS=true node test/runtime-local.smoke.cjs
 ```
 
-Se puede elegir otra imagen recién construida con RUNTIME_TEST_IMAGE. El script usa el compose versionado, reemplaza nombres/puertos para aislamiento, migra14migraciones desde DBvacía y ejecuta seed en NODE_ENV=production (solo6provincias,0cuentas); crea fixtures exclusivos con sesiones persistidas y JWT firmados. Prueba API Docker health200/catalog200/protegido401, preflight origen exacto/credentials/CSRF y origen ajeno no autorizado, cookie Secure/HttpOnly/SameSite=Lax y rechazo login sin CSRF. Upload multipart por API→AWS SDK→SeaweedFS; firma host público900s, GET bytes exactos, anónimo/firma vencida403. Recrea API+storage manteniendo volúmenes y compara metadata/bytes/hash de cuenta; storage caído503 no reemplaza archivo previo. Readiness HeadBucket autenticado antes de API y después del restart.
+Se puede elegir otra imagen recién construida con RUNTIME_TEST_IMAGE. El script usa el compose versionado, reemplaza nombres/puertos para aislamiento, aplica las15migraciones actuales desde DBvacía y ejecuta seed en NODE_ENV=production (solo6provincias,0cuentas); crea fixtures exclusivos con sesiones persistidas y JWT firmados. Prueba API Docker health200/catalog200/protegido401, preflight origen exacto/credentials/CSRF y origen ajeno no autorizado, cookie Secure/HttpOnly/SameSite=Lax y rechazo login sin CSRF. Upload multipart por API→AWS SDK→SeaweedFS; firma host público900s, GET bytes exactos, anónimo/firma vencida403. Recrea API+storage manteniendo volúmenes y compara metadata/bytes/hash de cuenta; storage caído503 no reemplaza archivo previo. Readiness HeadBucket autenticado antes de API y después del restart.
 
 La suite normal incluye storage-config con validación directa/boot y namespace interno+bucket estable al cambiar público; archivos mantiene regresiones journal/crash/carreras/namespace sobre S3 simulado. El smoke es HTTP desde host: navegador elegido, cookies sobre LAN/HTTPS y Android físico siguen pendientes. El script no inicia consumidores ni certifica R2/Resend/Meta reales.
 
@@ -91,3 +91,57 @@ Evidencia integrada F-012 del 2026-11-09: `TEST_DATABASE_URL=…/gdes_f003_test 
 Las suites deben ejecutarse sin concurrencia contra la misma base dedicada: `TEST_DATABASE_URL=…/gdes_f003_test node --test --test-concurrency=1 test/*.e2e.cjs`. El comando `npm test` compila y ejecuta la suite completa; la invocación anterior permite serializar explícitamente los archivos después de `npm run build`.
 
 Verificación independiente vigente F-014: build/lint/diff-check correctos y suite completa serial HTTP/PostgreSQL **208/208 PASS**, sin fallos, omisiones ni cancelaciones (80.2 s), contra DB efímera exclusiva `gdes_f003_test`, 14 migraciones y seed; contenedor retirado. No certifica UI ni despliegue y no modifica los pendientes F-011/F-013/Q-01.
+
+## Incidencias de integración (F-015)
+
+`users.e2e.cjs` añade lectura de cuatro roles y `role` readonly, filtros combinados con conteo/páginas exactas, administrador propio sujeto a provincia, lectores ADMIN/SUPER_ADMIN y rechazo de PATCH/estado no EMPLOYEE sin cambiar datos ni revocar sesiones. `/profile` y escrituras operativas conservan alcance EMPLOYEE. `auth-advanced` valida los dos mensajes contractuales WEAK_PASSWORD con envelope no reintentable, rango Unicode y lista/variante, separando errores genéricos. `admin-access` amplía la matriz con conflicto email/DNI/legajo sin datos ajenos, corrección con challenge fresco, normalización, payload inmutable, concurrencia de DNI/legajo y cuenta creada entre challenge y OTP. Los casos existentes cubren perfil no identitario preservado, password legado y cambios de credencial/identidad/estado mientras se verifica.
+
+Revisión fresca segura (elegir nombre/puerto libres exclusivos; contraseña siguiente es fixture pública local, no secreto de entorno):
+
+```bash
+docker run --rm -d --name gdes-f015-verification-test \
+  -e POSTGRES_PASSWORD=f015-test -e POSTGRES_DB=gdes_f003_test \
+  -p 127.0.0.1:55437:5432 postgres:16-alpine
+docker exec gdes-f015-verification-test pg_isready -U postgres
+DATABASE_URL=postgresql://postgres:f015-test@127.0.0.1:55437/gdes_f003_test npm run prisma:deploy
+NODE_ENV=test LOCAL_SEED_PASSWORD=f015-test-fixture DATABASE_URL=postgresql://postgres:f015-test@127.0.0.1:55437/gdes_f003_test npm run prisma:seed
+npm run build
+npm run lint
+TEST_DATABASE_URL=postgresql://postgres:f015-test@127.0.0.1:55437/gdes_f003_test node --test --test-concurrency=1 test/*.e2e.cjs
+# Retirar únicamente el recurso propio, sin volúmenes:
+docker stop gdes-f015-verification-test
+```
+
+Esperar readiness antes de migrar; no ejecutar simultáneamente suites sobre la misma DB ni iniciar servicios manuales. El seed explícito NODE_ENV=test prepara seis provincias y cuatro cuentas fixture locales, incluida seed.employee@gdes.local requerida por la regresión de seed en attendance; el password mostrado es fixture pública. Usar este seed solo en el contenedor efímero exclusivo. El seed production de solo catálogo no alcanza para la suite completa. Los tests fijan NODE_ENV=test y providers sin envíos. Evidencia aislada no certifica reporte humano, UI o LAN; diagnóstico con IDs/estados/filtros/bytes y límites vigentes en docs/06-integraciones.md. No se modifica B-02/B-04/Q-01.
+
+Verificación independiente vigente F-015: build/lint/diff-check PASS y **214/214 PASS** serial HTTP/PostgreSQL, fail/cancelled/skipped/todo0, exit0 (89.2 s). PostgreSQL16 efímero exclusivo sin volumen, 14 migraciones y seed test explícito de seis provincias/cuatro cuentas; la regresión attendance de seed está incluida y pasa. Contenedor propio retirado. El procedimiento publicado fue reproducido exactamente desde base vacía. Revisión independiente aprobada sin observaciones. Incluye regresiones F-014; no sustituye Android/Admin real ni smoke LAN/Mailpit/S3 nuevo y conserva B-02/B-04/Q-01 abiertos.
+
+## Contingencia sin lugar/provincia — F-013/B-04
+
+`files.e2e.cjs` cubre wire multipart `workplaceId="null"` explícito, rechazos de omitido/vacío/repetido/inválido, lotes10/máximo11, atomicidad de validación, DTO workplace/client/site null, permisos/propiedad, secuencia null concurrente y separada por empleado/mes/año/lugar, índice SQL independiente de locks API, lectura/filtros/paginación, reemplazo/CAS/status/auditoría, fallo storage503 y reinicio/descarga. La migración se aplica a tabla temporal con fila ordinaria previa y comprueba conservación; las suites verifican también índices reales/constraints. Dashboard prueba mezcla de lugar/null y estados/períodos: global incluye PENDING null y provincia no lo recibe.
+
+Preparación fresca exclusiva (no DB manual, contenedor sin volumen; nombre/puerto libres):
+
+```bash
+docker run --rm -d --name gdes-f013-review-test \
+  -e POSTGRES_PASSWORD=f013-test -e POSTGRES_DB=gdes_f003_test \
+  -p 127.0.0.1:55439:5432 postgres:16-alpine
+docker exec gdes-f013-review-test pg_isready -U postgres
+DATABASE_URL=postgresql://postgres:f013-test@127.0.0.1:55439/gdes_f003_test npm run prisma:deploy
+NODE_ENV=test LOCAL_SEED_PASSWORD=f013-test-fixture DATABASE_URL=postgresql://postgres:f013-test@127.0.0.1:55439/gdes_f003_test npm run prisma:seed
+npm run prisma:generate
+npx prisma validate
+npm run build
+npm run lint
+TEST_DATABASE_URL=postgresql://postgres:f013-test@127.0.0.1:55439/gdes_f003_test node --test --test-concurrency=1 test/*.e2e.cjs
+docker stop gdes-f013-review-test
+# Smoke real con artefacto actual, proyecto/volúmenes UUID y teardown propio:
+docker build --target build -t gdes-f013-build:local .
+RUNTIME_TEST_IMAGE=gdes-f013-build:local node test/runtime-local.smoke.cjs
+# O smoke + toda la suite serial en la DB recién creada del smoke:
+RUNTIME_TEST_IMAGE=gdes-f013-build:local RUNTIME_RUN_REGRESSIONS=true node test/runtime-local.smoke.cjs
+```
+
+Esperar readiness antes de migrar. Passwords son fixtures públicas de pruebas. Seed test explícito crea seis provincias/cuatro cuentas para la regresión de seed; production crea solo catálogo y no alcanza para toda la suite. No ejecutar suites concurrentes en la misma DB. El smoke prepara catálogo production inicialmente (verifica cero cuentas), crea fixtures propias y, si se pidieron regresiones, agrega seed test antes de ejecutarlas. Providers fijados a log, sin mensajes externos. Smoke cubre ordinaria y contingencia, descarga bytes exactos y metadata tras recreación API/storage, global2/provincial1, rechazo anónimo/vencido y503 que conserva originales. No arranca Mailpit ni servicios/volúmenes manuales. Q-01/Android/Admin físico, B-02 y despliegue siguen pendientes.
+
+Verificación independiente vigente F-013/B-04: Prisma generate/validate, build/lint/diff-check PASS; imagen propia nueva `gdes-f013-review-build:local` (4b1935999e50), smoke real API/PostgreSQL16/SeaweedFS PASS y **220/220 PASS** seriales, fail/cancelled/skipped/todo0, exit0 (93.5s). Comando `RUNTIME_TEST_IMAGE=gdes-f013-review-build:local RUNTIME_RUN_REGRESSIONS=true node test/runtime-local.smoke.cjs`. Proyecto UUID exclusivo desde DB vacía, 15 migraciones, seed production cero cuentas para smoke y seed test seis provincias/cuatro cuentas para regresiones. Ordinaria+contingencia, global2/provincial1, bytes/metadata tras recreación y storage503 que conserva ambos originales comprobados. Recursos/volúmenes/red del proyecto retirados y ausencia verificada. Reviewer aprobó C1–C7 sin observaciones. Puerto fijo33444 de auth debe estar libre: una colisión transitoria inicial se descartó repitiendo toda la verificación en otro proyecto/DB vacío, sin detener procesos ajenos ni alterar código/omitir casos. Q-01/B-02, aceptación física Mobile/Admin y despliegue permanecen pendientes.

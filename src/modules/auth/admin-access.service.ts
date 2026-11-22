@@ -15,7 +15,11 @@ const expired = () => failure(410, 'OTP_EXPIRED', 'El código venció');
 const decided = () =>
   failure(409, 'REQUEST_ALREADY_DECIDED', 'La solicitud ya fue resuelta o cancelada');
 const conflict = () =>
-  failure(409, 'ADMIN_REQUEST_IDENTITY_CONFLICT', 'Los datos pertenecen a otra identidad');
+  failure(
+    409,
+    'ADMIN_REQUEST_IDENTITY_CONFLICT',
+    'El email, DNI y legajo no corresponden a una misma cuenta. Revisá esos tres datos o contactá a administración',
+  );
 const ineligible = () =>
   failure(403, 'ADMIN_REQUEST_NOT_ELIGIBLE', 'La cuenta no puede solicitar acceso administrativo');
 const wrongPassword = () => failure(401, 'INVALID_CREDENTIALS', 'Las credenciales no son válidas');

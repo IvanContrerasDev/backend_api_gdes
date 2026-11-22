@@ -75,7 +75,7 @@ before(async () => {
       data: {
         firstName: 'Test',
         lastName: 'F003',
-        email: `${role}-${suffix}@test.local`,
+        email: `${role}-${randomUUID()}@test.local`,
         employeeId: `${role}-${suffix}`,
         dni: `${role}-${suffix}`,
         passwordHash: 'unused',
@@ -136,6 +136,7 @@ const detailKeys = [
   'phone',
   'site',
   'accountStatus',
+  'role',
   'address',
   'birthDate',
   'cuil',
@@ -154,6 +155,7 @@ const listKeys = [
   'phone',
   'site',
   'accountStatus',
+  'role',
 ].sort();
 function input(patch = {}) {
   sequence++;
@@ -224,7 +226,7 @@ test('employee creation, detail and own profile expose exact safe DTOs with veri
     position: null,
   });
 });
-test('users guards enforce admin CRUD, employee own profile and exclude administrator identities', async () => {
+test('users guards enforce admin writes and employee own profile while administrators remain readable', async () => {
   for (const path of ['/api/v1/users', '/api/v1/profile'])
     await error(path, 'INVALID_TOKEN', 401, { jwt: null });
   for (const [tail, method, body] of [
@@ -240,8 +242,8 @@ test('users guards enforce admin CRUD, employee own profile and exclude administ
       body,
     });
   await error('/api/v1/profile', 'ROLE_NOT_ALLOWED', 403);
+  assert.equal((await request(`/api/v1/users/${admin.id}`)).status, 200);
   for (const [tail, method, body] of [
-    [`/${admin.id}`, 'GET'],
     [`/${admin.id}`, 'PATCH', { firstName: 'Bad' }],
     [`/${admin.id}/account-status`, 'PATCH', { accountStatus: 'INACTIVE' }],
   ])
@@ -464,7 +466,7 @@ test('list has exact DTO, fixed ordering, partial literal case-insensitive searc
   const all = await request('/api/v1/users');
   assert.equal(all.body.pagination.page, 1);
   assert.equal(all.body.pagination.pageSize, 25);
-  assert.ok(!all.body.data.some((x) => x.id === admin.id));
+  assert.equal((await request(`/api/v1/users?search=${encodeURIComponent(admin.email)}`)).body.data[0].id, admin.id);
   assert.equal((await request('/api/v1/users?search=%25')).body.pagination.totalItems, 0);
 });
 test('status changes atomically revoke all sessions; idempotence and reactivation preserve revocation', async () => {
@@ -698,6 +700,12 @@ test('SUPER_ADMIN manages employees; protected create fields cannot grant roles 
   try {
     const jwt = token({ ...admin, role: 'SUPER_ADMIN' });
     assert.equal((await request('/api/v1/users', { jwt })).status, 200);
+    for (const target of [admin, pending, employee]) {
+      const detail = await request(`/api/v1/users/${target.id}`, { jwt });
+      assert.equal(detail.status, 200, JSON.stringify(detail.body));
+      assert.equal(detail.body.data.id, target.id);
+      assert.deepEqual((await request(`/api/v1/users?search=${encodeURIComponent(target.email)}`, { jwt })).body.data.map(row => row.id), [target.id]);
+    }
     assert.equal(
       (
         await request(`/api/v1/users/${u.id}`, {
@@ -712,4 +720,48 @@ test('SUPER_ADMIN manages employees; protected create fields cannot grant roles 
     await db.user.update({ where: { id: admin.id }, data: { role: 'ADMIN' } });
     await db.authSession.update({ where: { id: admin.sessionId }, data: { role: 'ADMIN' } });
   }
+});
+
+test('all four roles are readable with exact filters and pagination, while nonemployees are immutable', async () => {
+  const marker = `mixed-${suffix}`;
+  const otherSite = await db.site.findFirstOrThrow({ where: { id: { not: site.id } } });
+  const mixed = [];
+  for (const [index, role] of ['EMPLOYEE', 'TO_BE_ADMIN', 'ADMIN', 'SUPER_ADMIN'].entries()) {
+    const u = await create({ firstName: marker, lastName: String(index) });
+    await db.user.update({ where: { id: u.id }, data: { role, siteId: index === 3 ? otherSite.id : site.id,
+      accountStatus: index === 1 ? 'INACTIVE' : 'ACTIVE' } });
+    mixed.push({ ...u, role });
+  }
+  const query = `/api/v1/users?search=${marker}&siteId=${site.id}&accountStatus=ACTIVE&pageSize=1`;
+  for (const [page, expected] of [[1, mixed[0]], [2, mixed[2]]]) {
+    const r = await request(query + '&page=' + page);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body.data.map(u => u.id), [expected.id]);
+    assert.equal(r.body.data[0].role, expected.role);
+    assert.deepEqual(r.body.pagination, { page, pageSize: 1, totalItems: 2, totalPages: 2 });
+  }
+  assert.equal((await request(`/api/v1/users?search=${marker}`)).body.pagination.totalItems, 4);
+  for (const u of mixed) {
+    const r = await request(`/api/v1/users/${u.id}`);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(Object.keys(r.body.data).sort(), detailKeys);
+    assert.equal(r.body.data.role, u.role);
+    if (u.role === 'EMPLOYEE') continue;
+    await db.authSession.create({ data: { userId: u.id, role: u.role, client: 'ADMIN', csrfSecret: randomUUID(), expiresAt: new Date(Date.now() + 600000) } });
+    const before = await db.user.findUniqueOrThrow({ where: { id: u.id } });
+    const sessionsBefore = await db.authSession.findMany({ where: { userId: u.id } });
+    await error(`/api/v1/users/${u.id}`, 'USER_NOT_FOUND', 404, { method: 'PATCH', body: { firstName: 'Changed', role: 'EMPLOYEE' } });
+    await error(`/api/v1/users/${u.id}/account-status`, 'USER_NOT_FOUND', 404, { method: 'PATCH', body: { accountStatus: 'INACTIVE' } });
+    assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: u.id } }), before);
+    assert.deepEqual(await db.authSession.findMany({ where: { userId: u.id } }), sessionsBefore);
+  }
+  const before = await db.user.findUniqueOrThrow({ where: { id: admin.id } });
+  const own = await request(`/api/v1/users?search=${encodeURIComponent(admin.email)}&siteId=${site.id}`);
+  assert.deepEqual(own.body.data.map(u => u.id), [admin.id]);
+  assert.equal((await request(`/api/v1/users?search=${encodeURIComponent(admin.email)}&siteId=${otherSite.id}`)).body.pagination.totalItems, 0);
+  await error(`/api/v1/users/${admin.id}`, 'USER_NOT_FOUND', 404, { method: 'PATCH', body: { firstName: 'Changed' } });
+  await error(`/api/v1/users/${admin.id}/account-status`, 'USER_NOT_FOUND', 404, { method: 'PATCH', body: { accountStatus: 'INACTIVE' } });
+  assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: admin.id } }), before);
+  assert.equal((await request('/api/v1/profile')).status, 403);
+  assert.equal((await request('/api/v1/users')).status, 200);
 });

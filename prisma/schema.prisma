@@ -359,8 +359,8 @@ model Timesheet {
   id String @id @default(uuid()) @db.Uuid
   employeeId String @db.Uuid
   employee User @relation("TimesheetEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
-  workplaceId String @db.Uuid
-  workplace Workplace @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
+  workplaceId String? @db.Uuid
+  workplace Workplace? @relation(fields: [workplaceId], references: [id], onDelete: Restrict)
   month Int
   year Int
   sequenceNumber Int
